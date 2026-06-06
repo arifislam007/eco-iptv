@@ -1,0 +1,9 @@
+version: "3.8"
+
+services:
+  iptv:
+    build: .
+    container_name: freetv-player
+    ports:
+      - "8080:80"
+    restart: unless-stopped

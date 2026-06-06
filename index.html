@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ECOTV</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #080c10;
+      --surface: #0e1318;
+      --card:    #141b22;
+      --border:  #1e2a35;
+      --accent:  #00d4ff;
+      --accent2: #ff5c5c;
+      --text:    #dce8f0;
+      --muted:   #5a7080;
+      --live:    #ff3b3b;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow: hidden; }
+
+    /* ── LAYOUT ── */
+    #app { display: grid; grid-template-rows: 56px 1fr; grid-template-columns: 300px 1fr; height: 100vh; }
+
+    /* ── TOPBAR ── */
+    #topbar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; gap: 12px;
+      padding: 0 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+    #hamburger-btn {
+      display: none;
+      flex-direction: column; justify-content: center; gap: 5px;
+      width: 36px; height: 36px;
+      background: transparent; border: none; cursor: pointer;
+      padding: 7px; border-radius: 8px; transition: background .15s; flex-shrink: 0;
+    }
+    #hamburger-btn:hover { background: var(--card); }
+    #hamburger-btn span { display: block; width: 100%; height: 2px; background: var(--text); border-radius: 2px; transition: all .2s; }
+    #hamburger-btn.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    #hamburger-btn.open span:nth-child(2) { opacity: 0; }
+    #hamburger-btn.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    #logo {
+      display: flex; align-items: center; gap: 8px;
+      text-decoration: none; flex-shrink: 0;
+    }
+    #logo-img { height: 36px; width: auto; max-width: 140px; object-fit: contain; display: block; }
+    #logo-text {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 26px; letter-spacing: 3px;
+      color: var(--accent);
+      text-shadow: 0 0 18px rgba(0,212,255,.4);
+      display: none;
+    }
+    #logo-text span { color: var(--accent2); }
+    #logo-img.failed { display: none; }
+    #logo-img.failed + #logo-text { display: block; }
+
+    /* Admin-only controls — hidden until admin unlocks */
+    #sources-btn, #load-playlist-btn { display: none; }
+    body.admin-mode #sources-btn,
+    body.admin-mode #load-playlist-btn { display: flex; }
+
+    /* Admin lock indicator */
+    #admin-lock {
+      width: 28px; height: 28px;
+      display: none;
+      align-items: center; justify-content: center;
+      background: rgba(0,212,255,.1);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background .15s;
+    }
+    #admin-lock:hover { background: rgba(0,212,255,.2); }
+    #admin-lock svg { width: 13px; height: 13px; stroke: var(--accent); }
+    body.admin-mode #admin-lock { display: flex; }
+
+    #search-wrap { flex: 1; max-width: 380px; position: relative; }
+    #search {
+      width: 100%; padding: 8px 16px 8px 36px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px;
+      outline: none; transition: border-color .2s;
+    }
+    #search:focus { border-color: var(--accent); }
+    #search-wrap svg {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      width: 15px; height: 15px; fill: var(--muted); pointer-events: none;
+    }
+
+    #topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    #topbar-logo-right { height: 36px; width: auto; max-width: 120px; object-fit: contain; display: block; }
+    #channel-count { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); white-space: nowrap; }
+    #channel-count strong { color: var(--accent); }
+    .dot-live { width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 8px var(--live); animation: pulse 1.4s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+    /* topbar icon buttons */
+    .topbar-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 12px;
+      background: transparent; border: 1px solid var(--border); border-radius: 8px;
+      color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: border-color .2s, color .2s; white-space: nowrap; flex-shrink: 0;
+    }
+    .topbar-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .topbar-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+    .btn-text { display: inline; }
+
+    /* ── SIDEBAR ── */
+    #sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+
+    #sidebar-overlay {
+      display: none; position: fixed; inset: 56px 0 0 0;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(2px); z-index: 49;
+    }
+    #sidebar-overlay.show { display: block; }
+
+    #group-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 0; }
+    .gtab {
+      font-size: 11px; font-weight: 600; padding: 4px 10px;
+      border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); cursor: pointer; transition: all .15s; white-space: nowrap;
+    }
+    .gtab:hover { border-color: var(--accent); color: var(--accent); }
+    .gtab.active { background: var(--accent); border-color: var(--accent); color: #000; }
+
+    #channel-list-wrap {
+      flex: 1; overflow-y: auto; padding: 10px 0; scroll-behavior: smooth;
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    }
+    #channel-list-wrap::-webkit-scrollbar { width: 4px; }
+    #channel-list-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .channel-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px; cursor: pointer; transition: background .12s; border-left: 3px solid transparent;
+    }
+    .channel-item:hover { background: var(--card); }
+    .channel-item.active { background: var(--card); border-left-color: var(--accent); }
+    .ch-logo { width: 36px; height: 28px; object-fit: contain; border-radius: 4px; background: #0a1015; flex-shrink: 0; padding: 2px; }
+    .ch-logo-fallback {
+      width: 36px; height: 28px; background: linear-gradient(135deg, var(--card), var(--border));
+      border-radius: 4px; display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: var(--muted); flex-shrink: 0;
+    }
+    .ch-info { flex: 1; min-width: 0; }
+    .ch-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .ch-country { font-size: 10px; color: var(--muted); margin-top: 1px; font-family: 'JetBrains Mono', monospace; }
+    .ch-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--border); }
+
+    /* ── MAIN ── */
+    #main { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+
+    #player-wrap { position: relative; background: #000; flex-shrink: 0; }
+    #player-wrap::after { content: ''; display: block; padding-top: 56.25%; }
+    #video-el { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; }
+
+    #placeholder {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+      background: radial-gradient(ellipse at center, #0e1c26 0%, #080c10 70%);
+    }
+    #placeholder svg { width: 64px; height: 64px; opacity: .18; }
+    #placeholder p { font-size: 14px; color: var(--muted); letter-spacing: .5px; }
+
+    #loading-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,.75);
+      display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+    }
+    #loading-overlay.show { display: flex; }
+    .spinner { width: 44px; height: 44px; border: 3px solid rgba(0,212,255,.15); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-overlay p { font-size: 12px; color: var(--muted); }
+
+    #error-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,.8);
+      display: none; align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+    }
+    #error-overlay.show { display: flex; }
+    #error-overlay p { color: var(--accent2); font-size: 13px; text-align: center; max-width: 260px; }
+    #retry-btn { padding: 8px 20px; background: var(--accent2); color: #fff; border: none; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+    #retry-btn:hover { opacity: .85; }
+
+    #now-playing { padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+    #now-logo { width: 44px; height: 34px; object-fit: contain; border-radius: 6px; background: var(--card); padding: 3px; }
+    #now-info { flex: 1; min-width: 0; }
+    #now-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #now-meta { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+    #live-badge { display: flex; align-items: center; gap: 5px; background: var(--live); color: #fff; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px; letter-spacing: 1.5px; flex-shrink: 0; }
+
+    #bottom { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    #bottom-tabs { display: flex; padding: 0 20px; border-bottom: 1px solid var(--border); }
+    .btab { padding: 10px 16px; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
+    .btab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    #tab-content { flex: 1; overflow-y: auto; padding: 16px 20px; }
+
+    #featured-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+    .feat-tile { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 8px; text-align: center; cursor: pointer; transition: border-color .15s, transform .15s; }
+    .feat-tile:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .feat-tile img { width: 60px; height: 44px; object-fit: contain; margin-bottom: 8px; filter: brightness(.9); }
+    .feat-tile .fn { font-size: 11px; font-weight: 500; color: var(--text); }
+    .feat-tile .fc { font-size: 10px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+
+    #info-content { display: none; }
+    #info-content.show { display: block; }
+    #featured-content { display: none; }
+    #featured-content.show { display: block; }
+    .info-row { display: flex; gap: 10px; margin-bottom: 8px; font-size: 13px; }
+    .info-row dt { color: var(--muted); width: 90px; flex-shrink: 0; }
+    .info-row dd { color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11px; word-break: break-all; }
+    .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 40px 0; }
+
+    /* ── MODAL BASE ── */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+      z-index: 100; display: none; align-items: center; justify-content: center;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal-box {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 26px; width: min(480px, 94vw); box-shadow: 0 24px 60px rgba(0,0,0,.6);
+    }
+    .modal-box h2 { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 2px; color: var(--accent); margin-bottom: 6px; }
+    .modal-box p.modal-desc { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+    .modal-input {
+      width: 100%; padding: 10px 14px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 12px;
+      outline: none; transition: border-color .2s; margin-bottom: 10px;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+    .modal-input::placeholder { color: var(--muted); font-family: 'DM Sans', sans-serif; }
+    .modal-status { font-size: 12px; color: var(--muted); margin-bottom: 10px; min-height: 18px; }
+    .modal-status.error { color: var(--accent2); }
+    .modal-status.ok { color: #4caf50; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-btn {
+      padding: 9px 20px; border-radius: 8px; border: none;
+      font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .modal-btn:hover { opacity: .85; }
+    .modal-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .modal-btn.secondary { background: var(--card); color: var(--muted); border: 1px solid var(--border); }
+    .modal-btn.primary { background: var(--accent); color: #000; }
+    .modal-btn.danger { background: var(--accent2); color: #fff; }
+
+    /* ── SOURCES MODAL ── */
+    #sources-modal { max-height: 88vh; display: flex; flex-direction: column; gap: 14px; width: min(540px, 94vw); }
+    #sources-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; max-height: 280px; }
+    .source-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      transition: opacity .2s;
+    }
+    .source-item.disabled { opacity: .5; }
+    .source-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+    .source-dot.off { background: var(--border); }
+    .source-name { flex: 1; font-size: 13px; font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .source-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); flex-shrink: 0; }
+    .src-badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--border); color: var(--muted); font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+    .src-badge.builtin { background: rgba(0,212,255,.12); color: var(--accent); }
+    .src-toggle {
+      position: relative; width: 36px; height: 20px;
+      background: var(--border); border: none; border-radius: 10px; cursor: pointer; transition: background .2s; flex-shrink: 0;
+    }
+    .src-toggle::after { content: ''; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: transform .2s; }
+    .src-toggle.on { background: var(--accent); }
+    .src-toggle.on::after { transform: translateX(16px); }
+    .src-del {
+      width: 28px; height: 28px; background: transparent; border: 1px solid var(--border); border-radius: 6px;
+      color: var(--accent2); cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 13px; transition: background .15s; flex-shrink: 0;
+    }
+    .src-del:hover { background: rgba(255,92,92,.12); }
+
+    #add-source-section { border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    #add-source-section h3 { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .8px; text-transform: uppercase; }
+    .src-row { display: flex; gap: 8px; }
+    .src-row input {
+      flex: 1; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 12px; outline: none; transition: border-color .2s;
+    }
+    .src-row input:focus { border-color: var(--accent); }
+    .src-row input::placeholder { color: var(--muted); }
+    #new-source-url { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+    /* ── MOBILE RESPONSIVE ── */
+    @media (max-width: 768px) {
+      #app { grid-template-columns: 1fr; grid-template-rows: 56px 1fr; }
+      #hamburger-btn { display: flex; }
+      #sidebar {
+        position: fixed; left: -100%; top: 56px; bottom: 0;
+        width: 85vw; max-width: 300px; z-index: 50;
+        transition: left .25s cubic-bezier(.4,0,.2,1);
+        box-shadow: 4px 0 24px rgba(0,0,0,.5);
+      }
+      #sidebar.open { left: 0; }
+      #search-wrap { max-width: none; }
+      .btn-text { display: none; }
+      .topbar-btn { padding: 7px 10px; }
+      #now-playing { padding: 8px 12px; gap: 10px; }
+      #now-name { font-size: 13px; }
+      #bottom-tabs { padding: 0 12px; }
+      #tab-content { padding: 12px; }
+      #featured-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+    }
+    @media (max-width: 480px) {
+      #topbar { gap: 8px; padding: 0 10px; }
+      #logo-text { font-size: 20px; }
+      #channel-count { display: none; }
+      .dot-live { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOP BAR -->
+  <header id="topbar">
+    <button id="hamburger-btn" aria-label="Toggle sidebar">
+      <span></span><span></span><span></span>
+    </button>
+    <a id="logo" href="#">
+      <img id="logo-img" src="EcoNet-Logo.JPG" alt="ECOTV" />
+      <span id="logo-text">ECO<span>TV</span></span>
+    </a>
+    <div id="search-wrap">
+      <svg viewBox="0 0 24 24"><path d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+      <input id="search" type="text" placeholder="Search channels…" autocomplete="off" />
+    </div>
+    <div id="topbar-right">
+      <button class="topbar-btn" id="sources-btn" title="Manage sources">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+          <circle cx="3" cy="6" r="1"/><circle cx="3" cy="12" r="1"/><circle cx="3" cy="18" r="1"/>
+        </svg>
+        <span class="btn-text">Sources</span>
+      </button>
+      <button class="topbar-btn" id="load-playlist-btn" title="Load M3U8 URL">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <span class="btn-text">Add M3U8</span>
+      </button>
+      <button id="admin-lock" title="Exit admin mode">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </button>
+      <div id="channel-count">Loading…</div>
+      <div class="dot-live" title="Live streams"></div>
+      <img id="topbar-logo-right" src="logo.png" alt="Logo" onerror="this.style.display='none'" />
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div id="group-tabs"></div>
+    <div id="channel-list-wrap">
+      <div id="channel-list"></div>
+    </div>
+  </aside>
+  <div id="sidebar-overlay"></div>
+
+  <!-- MAIN CONTENT -->
+  <main id="main">
+    <div id="player-wrap">
+      <video id="video-el" controls playsinline></video>
+      <div id="placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="7" width="20" height="15" rx="2"/><path d="M17 2l-5 5-5-5"/></svg>
+        <p>Select a channel to start watching</p>
+      </div>
+      <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p>Connecting to stream…</p>
+      </div>
+      <div id="error-overlay">
+        <p id="error-msg">Stream unavailable or unsupported</p>
+        <button id="retry-btn">Retry</button>
+      </div>
+    </div>
+
+    <div id="now-playing">
+      <img id="now-logo" src="" alt="" style="display:none" />
+      <div id="now-info">
+        <div id="now-name" style="color:var(--muted);font-size:13px">No channel selected</div>
+        <div id="now-meta"></div>
+      </div>
+      <div id="live-badge" style="display:none"><div class="dot-live" style="animation:none;opacity:1"></div>LIVE</div>
+    </div>
+
+    <div id="bottom">
+      <div id="bottom-tabs">
+        <div class="btab active" data-tab="featured">Featured</div>
+        <div class="btab" data-tab="info">Stream Info</div>
+      </div>
+      <div id="tab-content">
+        <div id="featured-content" class="show"><div id="featured-grid"></div></div>
+        <div id="info-content"><dl id="stream-details"></dl></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ADD M3U8 MODAL -->
+<div class="modal-backdrop" id="add-modal-backdrop">
+  <div class="modal-box">
+    <h2>Add M3U8 URL</h2>
+    <p class="modal-desc">Paste an M3U8 playlist URL — it will be added as a new source and saved for future visits.</p>
+    <input class="modal-input" id="add-modal-name" type="text" placeholder="Source name (e.g. My IPTV)" autocomplete="off" />
+    <input class="modal-input" id="add-modal-url" type="url" placeholder="https://example.com/playlist.m3u8" autocomplete="off" spellcheck="false" />
+    <div class="modal-status" id="add-modal-status"></div>
+    <div class="modal-actions">
+      <button class="modal-btn secondary" id="add-modal-cancel">Cancel</button>
+      <button class="modal-btn primary" id="add-modal-submit">Add Source</button>
+    </div>
+  </div>
+</div>
+
+<!-- SOURCES MODAL -->
+<div class="modal-backdrop" id="sources-modal-backdrop">
+  <div class="modal-box" id="sources-modal">
+    <h2>Playlist Sources</h2>
+    <div id="sources-list"></div>
+    <div id="add-source-section">
+      <h3>Add New Source</h3>
+      <div class="src-row">
+        <input id="new-source-name" type="text" placeholder="Source name" autocomplete="off" />
+        <input id="new-source-url" type="url" placeholder="https://…/playlist.m3u8" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="src-row" style="justify-content:space-between; align-items:center;">
+        <div class="modal-status" id="sources-status" style="margin:0;min-height:auto"></div>
+        <button class="modal-btn primary" id="add-source-submit" style="flex-shrink:0">Add</button>
+      </div>
+    </div>
+    <div class="modal-actions" style="border-top:1px solid var(--border);padding-top:14px;margin-top:0">
+      <button class="modal-btn secondary" id="sources-close-btn">Close</button>
+      <button class="modal-btn primary" id="sources-apply-btn">Apply &amp; Reload</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN LOGIN MODAL -->
+<div class="modal-backdrop" id="admin-modal-backdrop">
+  <div class="modal-box">
+    <h2>Admin Access</h2>
+    <p class="modal-desc">Enter the admin password to manage playlist sources.</p>
+    <input class="modal-input" id="admin-pwd-input" type="password" placeholder="Password" autocomplete="off" />
+    <div class="modal-status" id="admin-pwd-status"></div>
+    <div class="modal-actions">
+      <button class="modal-btn secondary" id="admin-cancel-btn">Cancel</button>
+      <button class="modal-btn primary" id="admin-login-btn">Login</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const EMBEDDED_PLAYLIST_1 = '';
+const EMBEDDED_PLAYLIST_2 = "#EXTM3U\n# Source: SRC-ID:8a0a955eed047000f93213bc\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/ATN%20Music.png\" group-title=\"Bangla\",ATN Music\nhttps://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI/atnmusic.stream/playlist.m3u8\n\n# Source: SRC-ID:eb25061146813829500ee806\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/598TYnC/20240827-092020.png\" group-title=\"Religious\",Peace TV Urdu\nhttps://dzkyvlfyge.erbvr.com/PeaceTvUrdu/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/CPmLfGs/Amar-Bangla.png\" group-title=\"Bangla\",Amar Bangla\nhttps://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI/amarbanglatv.stream/playlist.m3u8\n\n# Source: SRC-ID:8a0a955eed047000f93213bc\n#EXTINF:-1 tvg-logo=\"https://ssl.com.bd/sites/default/files/BTV%20Logo%20Gallery.png\" group-title=\"Bangla\",BTV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1709/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://dl.dropbox.com/s/leielj83em5kg7h/somoy_news.png\" group-title=\"Bangla\",Somoy TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1702/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://s4.gifyu.com/images/imagea02f4314e761661d.png\" group-title=\"Bangla\",Ekattor TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1705/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://dl.dropbox.com/s/puf12xv5flgbnz5/channel24_bd.png\" group-title=\"Bangla\",Channel 24\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1703/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://dl.dropbox.com/s/7xwwb8hetz3w8rp/independent_tv.png\" group-title=\"Bangla\",Independent TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1704/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://dl.dropbox.com/s/k7z1dsec1jfjbkn/jamuna_tv_bd.png\" group-title=\"Bangla\",Jamuna TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1701/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://dl.dropbox.com/s/4ldi1dp09s8o6bm/atn_news_bd.png\" group-title=\"Bangla\",ATN News\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1706/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://s6.gifyu.com/images/image27cfa7002786c232.png\" group-title=\"Bangla\",ATN Bangla\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1722/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://www.ntvbd.com/sites/default/files/aggregator/2020/02/17/ntv-channel_0.jpg\" group-title=\"Bangla\",NTV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1716/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://s4.gifyu.com/images/image5c0bfa6b281be803.png\" group-title=\"Bangla\",BanglaVision\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1715/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://s4.gifyu.com/images/image534fa27d7683f33d.png\" group-title=\"Bangla\",Ekushey TV\nhttp://210.4.72.204/hls-live/livepkgr/_definst_/liveevent/livestream3.m3u8\n#EXTINF:-1 tvg-logo=\"https://cdn.tvpassport.com/image/station/240x135/channel-i-bangla.png\" group-title=\"Bangla\",Channel I\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1723/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/en/3/31/Deepto_TV_logo.png\" group-title=\"Bangla\",Deepto TV\nhttps://byphdgllyk.gpcdn.net/hls/deeptotv/0_1/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/ATN_Bangla.svg/2560px-ATN_Bangla.svg.png\" group-title=\"Bangla\",Atn Bangla\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1722/output/1722-audio_113522_eng=113200-video=1692000.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/C15wr1RW/Ekushey-Television-Logo-svg.png\" group-title=\"Bangla\",Ekushey TV\nhttps://ekusheyserver.com/hls-live/livepkgr/_definst_/liveevent/livestream3.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/g27Qp4RD/Background-Eraser-20240628-105829130.png\" group-title=\"Bangla\",Ntv\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1716/output/1716-audio_113462_eng=113200-video=1692000.m3u8\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/en/thumb/0/00/Logo_of_Deepto_TV.svg/1200px-Logo_of_Deepto_TV.svg.png\" group-title=\"Bangla\",Deepto Tv Backup\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1711/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://jamunagroup.com.bd/company-images/1662487622-mdshamimislam.png\" group-title=\"Bangla\",Jamuna Tv\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1701/output/1701-audio_113312_eng=113200-video=1692000.m3u8\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/en/thumb/e/ea/Enterr10_Bangla.jpeg/200px-Enterr10_Bangla.jpeg\" group-title=\"Bangla\",Enter10 Bangla\nhttps://amg01448-samsungin-enterr10bangla-samsungin-ad-gg.amagi.tv/playlist/amg01448-samsungin-enterr10bangla-samsungin/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://jio.dinesh29.com.np/smart/ardinesh/logos/news18-bangla-news.png\" group-title=\"Bangla\",News18 Bangla\nhttps://amg01448-samsungin-news18bangla-samsungin-ad-qy.amagi.tv/playlist/amg01448-samsungin-news18bangla-samsungin/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://yt3.ggpht.com/ytc/AMLnZu_Gxy8ywjMY6_YPX-1uYtUGA56FOfDoBsH62-ekNA=s900-c-k-c0x00ffffff-no-rj\" group-title=\"Religious\",Saudi Quran\nhttps://cdn-globecast.akamaized.net/live/eds/saudi_quran/hls_roku/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://images-na.ssl-images-amazon.com/images/I/71CywdrFaZL.png\" group-title=\"Religious\",Madina Live\nhttps://cdn-globecast.akamaized.net/live/eds/saudi_sunnah/hls_roku/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://bdiptv.stream/uploads/tv_image/discovery.png\" group-title=\"Documentary\",Discovery Hindi\nhttps://d1g8wgjurz8via.cloudfront.net/bpk-tv/Discoverychannel2/default/manifest.mpd\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/en/1/1d/Love_Nature_TV.png\" group-title=\"Documentary\",Love Nature\nhttps://cdn1.logichost.in/ajmantv/live/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Animal_Planet_logo.svg/1280px-Animal_Planet_logo.svg.png\" group-title=\"Documentary\",Animal Planet HD\nhttps://tiger-hub.vercel.app@vodzong.mjunoon.tv:8087/streamtest/Animal-Planet-158-3/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ytimg.com/vi/ZKFyzan2-xo/maxresdefault_live.jpg\" group-title=\"Music\",ATN Music\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1717/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/t4cxjxRj/Deshi-TV.jpg\" group-title=\"Live\",Deshi TV HD\nhttps://deshitv.deshitv24.net/live/myStream/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ytimg.com/vi/GRCWbI5ZSFg/maxresdefault.jpg\" group-title=\"Bangla\",ATN BANGLA UK\nhttps://app.ncare.live/live-orgin/atnbanglauk-off.stream/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/ATN%20Bangla.png\" group-title=\"Bangla\",ATN Bangla UK\nhttps://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/atnbanglauk-off.stream/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Deepto%20TV.jpeg\" group-title=\"Bangla\",Deepto TV\nhttps://byphdgllyk.gpcdn.net/hls/deeptotv/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Enter%2010%20Bangla.jpeg\" group-title=\"Bangla\",Enter 10 Bangla\nhttps://live-bangla.akamaized.net/liveabr/pub-iobanglakp3sff/live_720p/chunks.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Dd%20Bangla.png\" group-title=\"Bangla\",DD Bangla\nhttps://d3eyhgoylams0m.cloudfront.net/v1/manifest/93ce20f0f52760bf38be911ff4c91ed02aa2fd92/ed7bd2c7-8d10-4051-b397-2f6b90f99acb/2e9e32a4-c4f7-49c3-96d6-c4e3660c7e3f/2.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",ABP Ananda\nhttps://amg01448-samsungin-abpananda-samsungin-ad-pw.amagi.tv/playlist/amg01448-samsungin-abpananda-samsungin/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/1tmcNHW3/Star-Jalsha-HD.jpg\" group-title=\"Bangla\",Star Jalsha HD\nhttps://dhoomtv.xyz/live/P4B9TB9xR8/humongous2tonight/23218.ts\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/662vVv5x/ABP-Ananda.jpg\" group-title=\"Bangla\",ABP Ananda\nhttps://d35j504z0x2vu2.cloudfront.net/v1/manifest/0bc8e8376bd8417a1b6761138aa41c26c7309312/abp-ananda/1e4516fa-023a-4807-8e3d-479b346b4a62/2.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/MZQcv8Hm/Bangla-Jago.jpg\" group-title=\"Bangla\",Bangla Jago\nhttp://banglajagotv.livebox.co.in:80/banglajagohls/24x7.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/WzhwJYDJ/DD-Bangla.jpg\" group-title=\"Bangla\",DD Bangla\nhttps://d3qs3d2rkhfqrt.cloudfront.net/out/v1/7ff57cc9046b4c188b51a0d506f36e7f/index_3.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/3wPnKf19/Sony-Aath.jpg\" group-title=\"Bangla\",R Plus News\nhttps://thelegitpro.in/pntv/rplusnews24x7/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/tTNPLBMs/24-Ghanta.jpg\" group-title=\"Bangla\",TV9 Bangla\nhttps://dyjmyiv3bp2ez.cloudfront.net/pub-iotv9banaen8yq/liveabr/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/tTNPLBMs/24-Ghanta.jpg\" group-title=\"Bangla\",Zee 24 Ghanta\nhttps://d2dsoyvkr33m05.cloudfront.net/index_1.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co.com/KxC4ccD0/Casio-opening-bot-logo-4k-scaled.png\" group-title=\"Music\",9xM\nhttps://d35j504z0x2vu2.cloudfront.net/v1/manifest/0bc8e8376bd8417a1b6761138aa41c26c7309312/9xm/a731c680-6a62-4174-bc98-186fe654724a/0.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co.com/KxC4ccD0/Casio-opening-bot-logo-4k-scaled.png\" group-title=\"Music\",B>U Music\nhttps://d3kdywbtdfbp9z.cloudfront.net/v1/manifest/93ce20f0f52760bf38be911ff4c91ed02aa2fd92/dff423e0-3c82-46d6-9ecb-3baa96b5694a/4598c408-0e38-488c-9b64-fc845d1ea2b6/0.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/rmBYB7GQ/Bhojpuri-Cinema.jpg\" group-title=\"Indian\",B4U Movies\nhttps://d3kdywbtdfbp9z.cloudfront.net/v1/manifest/93ce20f0f52760bf38be911ff4c91ed02aa2fd92/dff423e0-3c82-46d6-9ecb-3baa96b5694a/cd1f59d6-9b5d-43f0-bfb2-6ca9edc99f27/0.m3u8\n#EXTINF:-1 tvg-logo=\"https://static.wikia.nocookie.net/logopedia/images/5/5b/8XM_2011_logo.png\" group-title=\"Indian\",MU | 8XM\nhttps://vodzong.mjunoon.tv:8087/streamtest/8XM-131/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://static.wikia.nocookie.net/logopedia/images/2/21/9x_Jalwa.png\" group-title=\"Indian\",MU | 9X Jalwa\nhttps://d35j504z0x2vu2.cloudfront.net/v1/manifest/0bc8e8376bd8417a1b6761138aa41c26c7309312/9x-jalwa/47bdb49d-f6f3-4927-a9ea-12c4c5afc732/0.m3u8\n#EXTINF:-1 tvg-logo=\"https://static.wikia.nocookie.net/logopedia/images/2/29/9x_media.png\" group-title=\"Indian\",MU | 9XM\nhttps://d35j504z0x2vu2.cloudfront.net/v1/manifest/0bc8e8376bd8417a1b6761138aa41c26c7309312/9xm/9f1a3d57-4134-4f4c-95ea-2cb142ac63f8/0.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Live\",#KODIPROP:inputstream.adaptive.license_key=1a75f9a2300f448089c6cdebeb97bbbd:606ae417e0e6cf4b0d353764e3140dbc\nhttps://v4-pan-n79-cdn-01.live.cdn.cgates.lt/live/dash/561301/index.mpd\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/FFwSjdzS/Pogo.jpg\" group-title=\"Kids\",ZB Cartoon\nhttps://server.zillarbarta.com/zbcatun/video.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/zBCLNtGZ/Duronto.jpg\" group-title=\"Kids\",Duck TV\nhttps://d2lmgfyblo9rak.cloudfront.net/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.imgur.com/ubZMeQv.jpg\" group-title=\"Kids\",Jungle Book\nhttps://cc-4bhi5osabejc9.akamaized.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-4bhi5osabejc9/junglebook.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.imgur.com/ubZMeQv.jpg\" group-title=\"Kids\",PBS Kids\nhttps://2-fss-2.streamhoster.com/pl_140/amlst:200914-1298290/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/zBCLNtGZ/Duronto.jpg\" group-title=\"Kids\",Rongeen TV\nhttps://server.thelegitpro.in/rongeentv/rongeentv/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Documentary\",Wild Life\nhttps://wildearth-plex.amagi.tv/master.m3u8\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/commons/5/5d/AccuWeather_2021.svg\" group-title=\"Documentary\",ACCU WEATHER\nhttps://cdn-ue1-prod.tsv2.amagi.tv/linear/amg00684-accuweather-accuweather-plex/playlist.m3u8?v=1\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Live\",#KODIPROP:inputstream.adaptive.license_key=2f4052e0dcb740b28b8fd49ee4ecd35a:e2e0d07b2767e46581c82cf87614e750\nhttps://v4-pan-n79-cdn-01.live.cdn.cgates.lt/live/dash/560404/index.mpd\n#EXTINF:-1 tvg-logo=\"https://is.gd/imZMIp\" group-title=\"News\",DW NEWS\nhttps://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/stream02/streamPlaylist.m3u8\n#EXTINF:-1 tvg-logo=\"https://is.gd/ywX5PG\" group-title=\"News\",CNN NEWS\nhttps://amg01448-samsungin-cnnnow-samsungin-4npqg.amagi.tv/playlist/amg01448-samsungin-cnnnow-samsungin/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://is.gd/ih6x8j\" group-title=\"News\",NDTV NEWS\nhttps://ndtv24x7elemarchana.akamaized.net/hls/live/2003678-b/ndtv24x7/master.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.imgur.com/wgIUsFu.png\" group-title=\"News\",BBC News\nhttps://ythls.armelin.one/channel/UCelk6aHijZq-GJBBB9YpReA.m3u8?v=1\n#EXTINF:-1 tvg-logo=\"https://i.imgur.com/A1xzjOI.png\" group-title=\"News\",DW English\nhttps://dwamdstream102.akamaized.net/hls/live/2015525/dwstream102/index.m3u8?v=1\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/M7W5zRy/images.png\" group-title=\"News\",RT News (EN) \ud83d\udedc\nhttps://rt-glb.rttv.com/live/rtnews/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/M7W5zRy/images.png\" group-title=\"News\",RTNEWS GLOBAL\nhttps://rt-rtd.rttv.com/dvr/rtdoc/playlist.m3u8?v=1\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/CzCnTHV/aljazeera-home-tv.png\" group-title=\"News\",Aljazeera HD Backup \ud83d\udedcv\nhttps://d1cy85syyhvqz5.cloudfront.net/v1/master/7b67fbda7ab859400a821e9aa0deda20ab7ca3d2/aljazeeraLive/AJE/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/ZnD8CtvQ/BBC.jpg\" group-title=\"News\",Breaking News\nhttps://cdn-ue1-prod.tsv2.amagi.tv/linear/amg02703-leadstory-leadstory-samsungau/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/vH3MKVPY/CNN.jpg\" group-title=\"News\",CNA News\nhttps://d2e1asnsl7br7b.cloudfront.net/7782e205e72f43aeb4a48ec97f66ebbe/index_5.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.imgur.com/ldXaLJK.png\" group-title=\"News\",NDTV English\nhttps://ndtv24x7elemarchana.akamaized.net/hls/live/2003678/ndtv24x7/master.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.imgur.com/ldXaLJK.png\" group-title=\"News\",NDTV Hindi\nhttps://ndtvindiaelemarchana.akamaized.net/hls/live/2003679/ndtvindia/master.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/RZJmcSt6/9XM.jpg\" group-title=\"News\",News Max 2\nhttps://nmxlive.akamaized.net/hls/live/529965/Live_1/index.m3u8\n\n# Source: SRC-ID:eb25061146813829500ee806\n#EXTINF:-1 tvg-logo=\"https://carboncredits.com/wp-content/uploads/2025/09/shutterstock_2306088965-e1757112807302.jpg\" group-title=\"Sports\",Football World Cup 2026\nhttps://tvsen7.aynaott.com/tsports-hd/tracks-v1a1/mono.ts.m3u8\n#EXTINF:-1 tvg-logo=\"https://carboncredits.com/wp-content/uploads/2025/09/shutterstock_2306088965-e1757112807302.jpg\" group-title=\"Live\",Football World Cup 2026\nhttp://198.195.239.50:8095/Tsports/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://carboncredits.com/wp-content/uploads/2025/09/shutterstock_2306088965-e1757112807302.jpg\" group-title=\"Live\",Football World Cup 2026\nhttp://198.195.239.50:8095/PTV-kutta/video.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Live Sports\nhttps://tvsen7.aynaott.com/sspts1/tracks-v1a1/mono.ts.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Live Sports\nhttp://198.195.239.50:8095/Eurosport/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Willow\nhttp://198.195.239.50:8095/WiLLow/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Nagorik TV\nhttp://198.195.239.50:8095/nagorik/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Live Sports\nhttp://103.161.153.165:8000/play/a02f/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Premier League\nhttps://premierleagpl23.akamaized.net/hls/live/2107108/tapmad47832/level_3.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Live Sports\nhttp://103.229.254.25:7001/play/a087/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Willow\nhttp://27.124.71.27/Willow_Extra/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Live Sports\nhttp://tvn1.chowdhury-shaheb.com/starsport1/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Live Sports\nhttp://tvn1.chowdhury-shaheb.com/starsport2/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",Sharq Game TV\nhttps://stream.snexus.co/live/SHARQ_GAME_TV/main_stream.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",T Sports\nhttps://live.tsports.com/mobile_hls/tsports_live_1/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPCvTmUhiKDs4ehoVpFLh7xwdCNK2-N_gNFqnaOM4YRQ&s=10\" group-title=\"Sports\",T Sports\nhttps://live.tsports.com/mobile_hls/tsports_live_3/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/BTV%20National.png\" group-title=\"Bangla\",BTV National\nhttp://103.229.254.25:7001/play/a064/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/BTV%20National.png\" group-title=\"Bangla\",BTV Chattogram\nhttps://www.btvlive.gov.bd/live/37f2df30-3edf-42f3-a2ee-6185002c841c/BD/a707f2dc-9704-413a-a67c-17c64a77c350/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/BTV%20National.png\" group-title=\"Bangla\",BTV Sangsad\nhttps://www.btvlive.gov.bd/live/37f2df30-3edf-42f3-a2ee-6185002c841c/BD/9ee3b4f9-fd0a-47c5-a135-2575c5691613/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ4GdTIOJgWg5_BCr3ZDvEzBOMt6gt0QoybcQ&usqp=CAU\" group-title=\"Bangla\",BTV News\nhttps://www.btvlive.gov.bd/live/37f2df30-3edf-42f3-a2ee-6185002c841c/BD/d96eb7f4-83c2-4472-9597-3568390a8ebf/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/T%20Sports.png\" group-title=\"Bangla\",T Sports\nhttps://live.tsports.com/mobile_hls/tsports_live_2/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Gazi%20TV.jpg\" group-title=\"Bangla\",Gazi TV\nhttp://tvn1.chowdhury-shaheb.com/gazitv/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Maasranga%20TV.png\" group-title=\"Bangla\",Maasranga TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1722/output/1722.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/NTV.png\" group-title=\"Bangla\",NTV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1716/output/1716.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/NTV.png\" group-title=\"Bangla\",NTV UK\nhttps://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/ntvuk00332211.stream/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/RTV.png\" group-title=\"Bangla\",RTV\nhttp://tvn3.chowdhury-shaheb.com/rtv/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/SATV.png\" group-title=\"Bangla\",SATV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1720/output/1720.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Deepto%20TV.jpeg\" group-title=\"Bangla\",Deepto TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1711/output/1711.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Mohona%20TV.png\" group-title=\"Bangla\",Mohona TV\nhttp://103.229.254.25:7001/play/a05t/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Desh%20TV.png\" group-title=\"Bangla\",Desh TV\nhttps://bozztv.com/rongo/rongo-DeshTV/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Bangla%20TV.png\" group-title=\"Bangla\",Bangla TV Europe\nhttps://byphdgllyk.gpcdn.net/hls/banglatveurope/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Channel%209.png\" group-title=\"Bangla\",Channel 9\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1729/output/1729.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Green%20TV.png\" group-title=\"Bangla\",Green TV\nhttps://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/greentv.stream/live-orgin/greentv.stream/chunks.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Channel%20S.jpeg\" group-title=\"Bangla\",Channel S UK HD\nhttp://103.161.153.165:8000/play/a02k/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://ibb.co.com/nPXPTPK\" group-title=\"Bangla\",Srk Tv\nhttps://srknowapp.ncare.live/srktvhlswodrm/srktv.stream/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/QmPPKgg/20240826-231747.png\" group-title=\"Bangla\",Channel S HD\nhttp://103.229.254.25:7001/play/a060/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Somoy%20TV.jpeg\" group-title=\"Bangla\",Somoy TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1702/output/1702.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Independent%20Television.png\" group-title=\"Bangla\",Independent TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1704/output/1704.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Ekattor%20TV.png\" group-title=\"Bangla\",Ekattor TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1705/output/1705.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/ATN%20News.png\" group-title=\"Bangla\",ATN News\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1706/output/1706.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/refs/heads/main/Channel%201.png\" group-title=\"Bangla\",Channel 1 News 4K\nhttps://app24.jagobd.com.bd/c3VydmVyX8RpbEU9Mi8xNy8yMFDEEHGcfRgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcEdsEfeDeKiNkVN3PTOmdFseWRtaW51aiPhnPTI2/channel1bd.stream/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/refs/heads/main/Star%20News.jpg\" group-title=\"Bangla\",Star News\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1710/output/1701.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/channel%2024.png\" group-title=\"Bangla\",Channel 24\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1703/output/1703.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/News%2024.png\" group-title=\"Bangla\",News 24\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1708/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/DBC%20News.png\" group-title=\"Bangla\",DBC News\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1728/output/1728.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/TBN24.png\" group-title=\"News\",TBN 24 USA\nhttps://dog.dg21bd.com/TBN24WEBUSA/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Music\",Music Bangla\nhttp://vmi3039524.contaboserver.net:5050/music/index.m3u8\n#EXTINF:-1 tvg-logo=\"://tplay.live/originals/bengali-beats/bengali-beats.png\" group-title=\"Bangla\",Bengla Beats\nhttps://tplay.live/originals/bengali-beats/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",Channel-16\nhttps://app24.jagobd.com.bd/c3VydmVyX8RpbEU9Mi8xNy8yMFDEEHGcfRgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcEdsEfeDeKiNkVN3PTOmdFseWRtaW51aiPhnPTI2/channel16bd.stream/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",Bengla\nhttps://poweredbyjibon.myziboplay.xyz/zibo/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/Gfw89mC/20240804-033102.png\" group-title=\"Religious\",Peace TV Bangla\nhttps://dzkyvlfyge.erbvr.com/PeaceTvBangla/tracks-v2a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/598TYnC/20240827-092020.png\" group-title=\"Religious\",Peace TV English\nhttps://dzkyvlfyge.erbvr.com/PeaceTvEnglish/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://s3.aynaott.com/storage/f71f649abc51984f09076ef6ee5c0d0c\" group-title=\"Live\",RTV Islam\nhttps://tvsen6.aynascope.net/rtvislam/index.m3u8?e=1762417832&u=5448cf91-5746-4e78-a357-d45dca5c1ab9&token=9aeaf35d6650b5eab457a136bd251921\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Religious\",Islamic TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1724/output/1724.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/7jrjkW1/20240813-112630.png\" group-title=\"Religious\",Madani TV\nhttps://streaming.madanichannel.tv/static/streaming-playlists/hls/d3e49b76-ac06-4689-a641-9200445b647f/master.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/rtkWYHV/20240827-092043.png\" group-title=\"Religious\",AL Sunnah TV\nhttp://m.live.net.sa:1935/live/sunnah/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Religious\",EWTN TV\nhttps://cdn3.wowza.com/1/ZVBYYXFLLzE0c3NC/Qk1FMURC/hls/qrpsvkxl/720/chunklist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Religious\",God TV\nhttps://hlsb-us.god.tv/GODTV/USA-480.m3u8\n#EXTINF:-1 tvg-logo=\"https://bigcchubchat.pages.dev/837.png\" group-title=\"Indian\",Hare Krsna\nhttps://hktv.harekrsnatv.com/HKTV/HKWebApp/manifest.mpd\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Religious\",Arihant TV\nhttps://aasthaott.akamaized.net/110923/smil:arihant.smil/chunklist_b1928000.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",G-Serise\nhttps://vods2.aynaott.com/gseriesDrama/tracks-v1a1/mono.ts.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/56e54462053b1b278b80b532c89c01f17e360fd5/Sony%20Aath.jpeg\" group-title=\"Bangla\",Sony Aath\nhttp://198.195.239.50:8095/SonyAath/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/mAathStar%20Jalsha.png\" group-title=\"Bangla\",Star Jalsha\nhttp://198.195.239.50:8095/bdixbd.net_StarJalshaHD/video.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/zee%20Bangla.png\" group-title=\"Bangla\",Zee Bangla HD\nhttp://103.161.153.165:8000/play/zeebnhd/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Colors%20Bangla.png\" group-title=\"Bangla\",Colors Bangla\nhttp://103.229.254.25:7001/play/a076/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Sun%20Bangla.png\" group-title=\"Bangla\",Sun Bangla HD\nhttp://103.161.153.165:8000/play/a03k/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",R Plus Gold\nhttps://cdn-4.pishow.tv/live/1231/1231_1.m3u8\n#EXTINF:-1 tvg-logo=\"http://tv.digitalview.live:8080/images/COkEO-FWL6Un57bQno1oDDZsiBeWCSjxPVZv0hLJ3dQmW5aAA-8mIeuB88P0SUdrjBBSFEHQ2ZXiddKtVfnJCQ.png\" group-title=\"Bangla\",AAKASH AATH\nhttps://cdn-4.pishow.tv/live/969/master.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",Bangla Movies\nhttps://live-stream.utkalbongo.com/hls/livebanglatvstream.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Jalshamovieshd.jpg\" group-title=\"Movies\",Jalsha Movies\nhttp://198.195.239.50:8095/JalshaMovies/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Jalshamovieshd.jpg\" group-title=\"Movies\",Jalsha Movies HD\nhttp://103.161.153.165:8000/play/a01e/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Zee%20Bangla%20Cinema%20.png\" group-title=\"Movies\",Zee Bangla Cinema\nhttp://103.161.153.165:8000/play/a01a/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",ZB Cinema\nhttps://server.zillarbarta.com/ZBCINEMA/tracks-v1a1/mono.ts.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Colors%20Bangla%20Cinema.png\" group-title=\"Movies\",Colors Bangla Cinema\nhttp://198.195.239.50:8095/ColorsBanglaChinema/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Colors%20Bangla%20Cinema.png\" group-title=\"Movies\",Colors Bangla Cinema\nhttp://103.229.254.25:7001/play/a078/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://static.wikia.nocookie.net/etv-gspn-bangla/images/c/c4/Khushboo_Bangla_logo_%282016-present%29.png\" group-title=\"Movies\",Khushboo Bangla\nhttps://cdn3.pishow.tv/live/283/master.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Sangeet%20Bangla.jpeg\" group-title=\"Bangla\",Sangeet Bangla\nhttps://cdn-4.pishow.tv/live/1143/master.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",Dhoom Music\nhttp://103.175.73.12:8080/live/378/378_0.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",R Plus News\nhttps://thelegitpro.in/pntv/rplusnews24x7/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://jio.dinesh29.com.np/smart/ardinesh/logos/calcutta-news.png\" group-title=\"Bangla\",Calcutta News\nhttps://akdnetwork.co.in/live/cnnew/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://jio.dinesh29.com.np/smart/ardinesh/logos/kolkata-tv.png\" group-title=\"Bangla\",Kolkata TV\nhttps://cdn.ottlive.co.in/kolkatatv/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://jio.dinesh29.com.np/smart/ardinesh/logos/tv9-bangla.png\" group-title=\"Bangla\",TV9 Bangla\nhttps://amg01448-samsungin-tv9bangla-samsungin-9lgnh.amagi.tv/playlist/amg01448-samsungin-tv9bangla-samsungin/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",R Bangla\nhttps://tvsen5.aynaott.com/R_Bangla/tracks-v1a1/mono.ts.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",NK\nhttps://amg01218-republictvfast-amg01218c1-samsung-in-1918.playouts.now.amagi.tv/playlist/amg01218-republictvfast-rbangla-samsungin/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Bangla\",NK TV Bangla\nhttps://nktv.smartstream.video/smartstream-us/nkbangla/nkbangla/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/56e54462053b1b278b80b532c89c01f17e360fd5/Sony%20TV.png\" group-title=\"Indian\",Sony TV\nhttp://103.161.153.165:8000/play/a01i/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/56e54462053b1b278b80b532c89c01f17e360fd5/Sony%20TV.png\" group-title=\"Indian\",Sony TV HD\nhttp://198.195.239.50:8095/SonyTv/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",Sony Kal\nhttps://spt-sonykal-1-us.lg.wurl.tv/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/56e54462053b1b278b80b532c89c01f17e360fd5/Sony%20Sab.jpeg\" group-title=\"Indian\",Sony Sab\nhttp://103.161.153.165:8000/play/a03r/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Live\",Sony Pal\nhttp://45.127.56.3:6699/live/Corpus-POL1/SRV4/2/SONY-PAL/live.mpd\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Star%20Plus.png\" group-title=\"Indian\",Star Plus\nhttp://103.229.254.25:7001/play/a09z/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Colors.png\" group-title=\"Indian\",Colors\nhttp://103.229.254.25:7001/play/a077/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Colors.png\" group-title=\"Indian\",Colors HD\nhttp://103.229.254.25:7001/play/a0a1/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Zee%20TV.png\" group-title=\"Indian\",Zee TV\nhttp://103.161.153.165:8000/play/a01j/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Zee%20TV.png\" group-title=\"Indian\",Zee TV HD\nhttp://103.229.254.25:7001/play/a0cs/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/commons/b/b4/Zee_Anmol_Cinema_logo.png\" group-title=\"Indian\",Zee Anmol TV\nhttp://103.175.73.12:8080/live/256/256_0.m3u8\n#EXTINF:-1 tvg-logo=\"https://images.toffeelive.com/images/program/801/logo/240x240/mobile_logo_974516001655891652.png\" group-title=\"Indian\",And TV HD\nhttp://103.229.254.25:7001/play/a034/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",Big Magic\nhttp://103.175.73.12:8080/live/13/13_0.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",The Movie Club\nhttps://cc-r5hupcym5oehh.akamaized.net/v1/master/3722c60a815c199d9c0ef36c5b73da68a62b09d1/cc-r5hupcym5oehh/SBUM/RunnTV/BollyFlix_IN/BollyFlix_IN.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",South Station 2\nhttp://xtv.ooo:8080/danyear12/am8091danyear98\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",South Station 3\nhttp://xtv.ooo:8080/danyear12/am809100/263386\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Sony%20Max.png\" group-title=\"Movies\",Sony Max\nhttp://103.99.249.139/sonymax/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Sony%20Max.png\" group-title=\"Movies\",Sony Max\nhttp://103.161.153.165:8000/play/a01k/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/56e54462053b1b278b80b532c89c01f17e360fd5/Set%20Max%202.jpeg\" group-title=\"Movies\",Sony Max 2 HD\nhttps://edge2.roarzone.info:8447/roarzone/edge3/sony-max-2/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Zee%20Cinema.png\" group-title=\"Movies\",Zee Cinema HD\nhttp://103.99.249.139/zeecinema/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Zee%20Action.png\" group-title=\"Indian\",Zee Action\nhttp://103.175.73.12:8080/live/270/270_0.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Zee%20Action.png\" group-title=\"Movies\",Zee Action\nhttp://103.161.153.165:8000/play/a03s/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/commons/b/b4/Zee_Anmol_Cinema_logo.png\" group-title=\"Indian\",Zee Anmol Cinema\nhttp://103.175.73.12:8080/live/271/271_0.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Star%20Gold.png\" group-title=\"Movies\",Star Gold\nhttp://103.99.249.139/stargold/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Star%20Gold.png\" group-title=\"Movies\",Star Gold HD\nhttp://103.229.254.25:7001/play/a0dd/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Star%20Gold%20Select%20HD.jpg\" group-title=\"Movies\",Star Gold Select HD\nhttp://103.229.254.25:7001/play/a032/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Colors%20Cineplax.png\" group-title=\"Movies\",Colors Cineplex\nhttp://198.195.239.50:8095/ColorsCineplex/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/vPKt3db/20240829-150710.png\" group-title=\"Movies\",Rishtey Cinaplax\nhttp://172.105.123.238:18002/play/a015\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/And%20Pictures%20.png\" group-title=\"Movies\",And Pictures\nhttp://103.229.254.25:7001/play/a033/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Movies\",UTV Gold\nhttp://103.161.153.165:8000/play/a03c/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Movies\",UTV Classic\nhttp://103.161.153.165:8000/play/a03d/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Movies\",UTV Pictures\nhttp://103.161.153.165:8000/play/a03e/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/B4U%20Movies.png\" group-title=\"Indian\",B4U Kadak\nhttps://cdn-2.pishow.tv/live/227/master.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/KjjqnRH/Picsart-23-06-30-21-35-20-283.png\" group-title=\"Indian\",Sheemaroo Bollywood\nhttps://cdn-uw2-prod.tsv2.amagi.tv/linear/amg00864-shemarooenterta-shemabollywood-ono/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSisiK50nT9KXOAVZcRYy4aTrv4cVP9btrY4_s2KvXzXaSzGeUEmvgE3Gj4&s=10\" group-title=\"Indian\",Joo Music\nhttps://livecdn.live247stream.com/joomusic/tv/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://static.wikia.nocookie.net/jhmovie/images/7/7b/Goldmines_logo.png/revision/latest?cb=20240404141630\" group-title=\"Indian\",Goldmines\nhttps://cdn-2.pishow.tv/live/1459/master.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",Goldmines Bollywood\nhttp://103.175.73.12:8080/live/52/52_0.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",Goldmines Movies\nhttps://cdn-2.pishow.tv/live/1461/master.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",Goldmines Movies 2\nhttps://cdn-2.pishow.tv/live/1460/master.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Live\",Goldminnes Thtills\nhttp://172.105.123.238:18002/play/a01h\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Live\",Goldminnes Action\nhttp://202.164.50.194:8000/play/a039/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSLOrrVnk_41l-x7vMswKXKH2YJYGL5TNx6MzOEbEvzUA&s\" group-title=\"Indian\",Manoranjan Movies\nhttp://103.175.73.12:8080/live/23/23_0.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSLOrrVnk_41l-x7vMswKXKH2YJYGL5TNx6MzOEbEvzUA&s\" group-title=\"Indian\",Manoranjan Prime\nhttp://103.175.73.12:8080/live/345/345_0.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSLOrrVnk_41l-x7vMswKXKH2YJYGL5TNx6MzOEbEvzUA&s\" group-title=\"Indian\",Manoranjan Grend\nhttp://103.175.73.12:8080/live/19/19_0.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",BOLLYWOOD PRIME\nhttps://d35j504z0x2vu2.cloudfront.net/v1/manifest/0bc8e8376bd8417a1b6761138aa41c26c7309312/bollywood-prime/3850b620-3d48-4f69-a540-27e9f3262077/3.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",Bollywood HD\nhttps://d35j504z0x2vu2.cloudfront.net/v1/manifest/0bc8e8376bd8417a1b6761138aa41c26c7309312/bollywood-hd/d3227daf-ea13-48c9-95a4-1619862d136e/0.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Star%20Sports%201%40.jpeg\" group-title=\"Sports\",Star Sports 1 HD\nhttp://41.205.93.154/STARSPORTS1/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/56e54462053b1b278b80b532c89c01f17e360fd5/Sony%20Sports%20Ten%202.png\" group-title=\"Sports\",Sony Sports Ten 2 HD\nhttp://103.229.254.25:7001/play/a0ef/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/56e54462053b1b278b80b532c89c01f17e360fd5/Sony%20Sports%20Ten%203.png\" group-title=\"Sports\",Sony Sports Ten 3 HD\nhttp://103.99.249.139/sonyten3/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Sports\",DD Sports 2.0\nhttps://d3qs3d2rkhfqrt.cloudfront.net/out/v1/b17adfe543354fdd8d189b110617cddd/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Eurosports.png\" group-title=\"Sports\",Eurosports HD\nhttp://103.161.153.165:8000/play/a01b/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/PTV%20Sports.png\" group-title=\"Sports\",PTV Sports\nhttp://163.61.227.29:8000/play/a05l/40652310.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/A%20Sports.png\" group-title=\"Sports\",A Sports\nhttp://163.61.227.29:8000/play/a03t/58044238.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Sports\",Bein Sports 1\nhttp://103.161.153.165:8000/play/a03z/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Discovery%20.png\" group-title=\"Documentary\",Discovery Bangla\nhttp://202.70.146.135:8000/play/a05z/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/National%20Geographic%20Channel.png\" group-title=\"Documentary\",Nat Geo HD\nhttp://103.229.254.25:7001/play/a038/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/National%20Geographic%20Channel.png\" group-title=\"Documentary\",Nat Geo HD\nhttp://202.70.146.135:8000/play/a05o/index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Documentary\",BBC Earth\nhttps://d3u3pfhhvuad9k.cloudfront.net/playlist/amg00793-bbcstudios-bbcearta-lgus/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Documentary\",BBC Earth\nhttps://amg00793-bbcstudios-amg00793c3-lg-us-2528.playouts.now.amagi.tv/playlist/amg00793-bbcstudios-bbcearta-lgus/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/8k0rH0MK/CGTN-Documentary-logo.png\" group-title=\"Documentary\",CGTN Documentary\nhttps://livedoc.cgtn.com/1000d/prog_index.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Documentary\",Wild Earth\nhttps://wildearth-roku.amagi.tv/masterR720P.m3u8\n#EXTINF:-1 tvg-logo=\"https://gd.mdsharifulislamnayon.workers.dev/1:/TV%20LOGO/colors%20infinity.jpeg\" group-title=\"Documentary\",Colors Infinity HD\nhttp://103.229.254.25:7001/play/a0du/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://images.toffeelive.com/images/program/2429/logo/240x240/mobile_logo_009938001674474908.png\" group-title=\"Documentary\",History TV 18\nhttp://103.229.254.25:7001/play/a02z/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Travel%20XP.png\" group-title=\"Documentary\",Travel XP GB\nhttps://travelxp-travelxp-1-gb.samsung.wurl.tv/3000.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/mBanglaavel%20XP.png\" group-title=\"Documentary\",Travel XP English NL\nhttps://travelxp-travelxp-3-nl.samsung.wurl.tv/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Travel%20XP.png\" group-title=\"Documentary\",Travel XP English EU\nhttps://travelxp-travelxp-1-eu.rakuten.wurl.tv/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Travel%20XP.png\" group-title=\"Documentary\",Travel XP English NZ\nhttps://travelxp-travelxp-1-nz.samsung.wurl.tv/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Travel%20XP.png\" group-title=\"Documentary\",Travel XP English SE\nhttps://travelxp-travelxp-1-se.samsung.wurl.tv/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Documentary\",Food Food\nhttp://103.175.73.12:8080/live/143/143_0.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Documentary\",CGTN Docment\nhttps://english-livebkali.cgtn.com/live/doccgtn_1.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Documentary\",Discover Pakistan TV\nhttps://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/discoverpakistan.stream/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"h\" group-title=\"Kids\",Tom & Jarry\nhttps://live20.bozztv.com/giatvplayout7/giatv-208314/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.postimg.cc/3RxSzVbd/image.jpg\" group-title=\"Kids\",Zoo Moo\nhttps://amg01553-blueantmediaasi-zoomoonz-samsungnz-rdufn.amagi.tv/playlist/amg01553-blueantmediaasi-zoomoonz-samsungnz/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Star%20Movies.png\" group-title=\"Movies\",Star Movies\nhttp://198.195.239.50:8095/StarMovies/tracks-v1a1/mono.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Movies\",Lotus\nhttps://cdn1.skygo.mn/live/disk1/Lotus/HLSv3-FTA/Lotus-avc1_2089200=342-mp4a_256000_eng=343.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/English%20Movies.jpeg\" group-title=\"Movies\",Action Hollywood Movies\nhttps://amg01076-lightningintern-actionhollywood-samsungnz-82rry.amagi.tv/playlist/amg01076-lightningintern-actionhollywood-samsungnz/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Live\",YRF Music HD\nhttps://cdn-uw2-prod.tsv2.amagi.tv/linear/amg01412-xiaomiasia-yrfmusic-xiaomi/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",Hindi Hits HD\nhttp://146.59.253.52:8080/hindihitshd/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/9xm.png\" group-title=\"Indian\",9XM\nhttp://103.175.73.12:8080/live/155/155_0.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Indian\",B4U Music\nhttps://d3kdywbtdfbp9z.cloudfront.net/v1/manifest/93ce20f0f52760bf38be911ff4c91ed02aa2fd92/dff423e0-3c82-46d6-9ecb-3baa96b5694a/4598c408-0e38-488c-9b64-fc845d1ea2b6/1.m3u8\n#EXTINF:-1 tvg-logo=\"https://i.ibb.co/dbjnG3X/20240803-105403.png\" group-title=\"Indian\",E24\nhttp://103.175.73.12:8080/live/159/159_0.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Music\",8XM\nhttp://125.209.88.166:45793/BRN/8XM.stream/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"Music\",Show Box\nhttps://epiconvh.s.llnwi.net/showbox/master_1080.m3u8\n#EXTINF:-1 tvg-logo=\"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSKyMNNb_SRC2dnm7IW84llAJ9aO5Zb7V4jdjHaweOo58tzrc9pSsRv85-TZD1w4L57nc4&usqp=CAU\" group-title=\"Indian\",Music India\nhttp://103.175.73.12:8080/live/158/158_0.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Al%20Jazeera%20.png\" group-title=\"News\",Aljazeera\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1721/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://raw.githubusercontent.com/subirkumarpaul/Logo/main/BBC%20World%20News.png\" group-title=\"News\",BBC World\nhttp://cdns.jp-primehome.com:8000/zhongying/live/playlist.m3u8?cid=cs15\n#EXTINF:-1 tvg-logo=\"\" group-title=\"News\",CGTN News\nhttps://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/cgtn.stream/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://upload.wikimedia.org/wikipedia/en/thumb/6/65/FRANCE_24_logo.svg/1200px-FRANCE_24_logo.svg.png\" group-title=\"News\",France 24\nhttps://app.ncare.live/c3VydmVyX8RpbEU9Mi8xNy8yMDE0GIDU6RgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcGVMZEJCTEFWeVN3PTOmdFsaWRtaW51aiPhnPTI2/fr24.stream/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"News\",Sky News\nhttps://d39chvnxm26pgp.cloudfront.net/v1/master/72588bff830dec7b26d7cbbf5f3c24928aec5c03/cc-sthen6ms4vxgv-stage/WNSFO/ABR.m3u8\n#EXTINF:-1 tvg-logo=\"\" group-title=\"News\",NHK World\nhttp://103.175.73.12:8080/live/417/417_0.m3u8\n#EXTINF:-1 tvg-logo=\"https://m.media-amazon.com/images/M/MV5BNTE0MGVkOTEtYTQzMC00ZGQ5LWEzN2ItZGNkMTgzOTg3MDI2XkEyXkFqcGdeQXVyMTMyMTM0Mzcz._V1_FMjpg_UX1000_.jpg\" group-title=\"Movies\",Tofan\nhttps://vhoichoi.viewlift.com/Renditions/20240918/1726653787189_88a8sna0ns9a8s7tf/hls/1726653787189_88a8sna0ns9a8s7tf.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770186306600.png\" group-title=\"News\",DBC News HD\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1728/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770189826301.png\" group-title=\"News\",Star News\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1710/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1772728412891.png\" group-title=\"Live\",Islamic TV\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1724/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770188008067.png\" group-title=\"Live\",Channel 9 HD\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1729/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770347851305.png\" group-title=\"Movies\",Cineedge HD\nhttps://nomawnoijl.gpcdn.net/akash/cineedge/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770347327658.png\" group-title=\"Movies\",Uniques HD\nhttps://nomawnoijl.gpcdn.net/akash/uniques/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770348388925.png\" group-title=\"Movies\",Superrix HD\nhttps://nomawnoijl.gpcdn.net/akash/superrix/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770312098339.png\" group-title=\"Movies\",Screem\nhttps://nomawnoijl.gpcdn.net/akash/screem/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770377900139.png\" group-title=\"Sports\",Sports Legends\nhttps://nomawnoijl.gpcdn.net/akash/sportslegends/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770378074527.png\" group-title=\"Sports\",Flash Guys HD\nhttps://nomawnoijl.gpcdn.net/akash/flashguys/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770379038530.png\" group-title=\"Kids\",BuddyStar HD\nhttps://nomawnoijl.gpcdn.net/akash/buddystar/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770378560772.png\" group-title=\"Live\",Luxel HD\nhttps://nomawnoijl.gpcdn.net/akash/luxell/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770378874717.png\" group-title=\"Kids\",Joy\nhttps://nomawnoijl.gpcdn.net/akash/joy/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770379573329.png\" group-title=\"Kids\",Funny Junior HD\nhttps://nomawnoijl.gpcdn.net/akash/funnyjunior/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770380126540.png\" group-title=\"Movies\",Crimes\nhttps://nomawnoijl.gpcdn.net/akash/crimes/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770380306806.png\" group-title=\"Movies\",True Stories\nhttps://nomawnoijl.gpcdn.net/akash/truestories/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770380460488.png\" group-title=\"Movies\",Intelligence\nhttps://nomawnoijl.gpcdn.net/akash/intelligence/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770380601958.png\" group-title=\"Sports\",Sports Range\nhttps://nomawnoijl.gpcdn.net/akash/sportrange/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770380791303.png\" group-title=\"Sports\",Thunder Er\nhttps://nomawnoijl.gpcdn.net/akash/thunder/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770380942670.png\" group-title=\"Sports\",Fighters\nhttps://nomawnoijl.gpcdn.net/akash/fighter/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770381107924.png\" group-title=\"Kids\",Smarty\nhttps://nomawnoijl.gpcdn.net/akash/smarty/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770381248531.png\" group-title=\"Kids\",Lucky Family\nhttps://nomawnoijl.gpcdn.net/akash/luckyfamily/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1770381398090.png\" group-title=\"Kids\",Kids Stars\nhttps://nomawnoijl.gpcdn.net/akash/kidsstars/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1778083145889.png\" group-title=\"Music\",Party Universe\nhttps://nomawnoijl.gpcdn.net/akash/partyuniverse/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1778086065071.png\" group-title=\"Live\",Al Quran\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1713/output/index.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1778083459294.png\" group-title=\"Kids\",Nikki\nhttps://nomawnoijl.gpcdn.net/akash/nikky/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1778085327477.png\" group-title=\"Movies\",Originals\nhttps://nomawnoijl.gpcdn.net/akash/originals/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1778085745609.png\" group-title=\"Sports\",Crazy Ex\nhttps://nomawnoijl.gpcdn.net/akash/crazy_ex/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1778086478755.png\" group-title=\"Live\",Delicious\nhttps://nomawnoijl.gpcdn.net/akash/delicious/playlist.m3u8\n#EXTINF:-1 tvg-logo=\"https://tstatic.akash-go.com/cms-ui/images/custom-content/1778087459461.png\" group-title=\"Live\",Program Promo\nhttps://owrcovcrpy.gpcdn.net/bpk-tv/1720/output/index.m3u8\n";
+const CORS_PROXY = 'https://corsproxy.io/?';
+
+// ── STATE ──────────────────────────────────────────────────────────
+let allChannels  = [];
+let filtered     = [];
+let activeGroup  = 'All';
+let currentIndex = -1;
+let hlsInstance  = null;
+
+const $ = id => document.getElementById(id);
+
+// ── SOURCES ────────────────────────────────────────────────────────
+const BUILTIN_SOURCES = [
+  { id: 'bangla', name: 'Bangla IPTV', data: EMBEDDED_PLAYLIST_2 },
+];
+
+function getUserSources()     { return JSON.parse(localStorage.getItem('ecotv_user_src')  || '[]'); }
+function saveUserSources(v)   { localStorage.setItem('ecotv_user_src',  JSON.stringify(v)); }
+function getEnabledMap()      { return JSON.parse(localStorage.getItem('ecotv_src_on')    || '{}'); }
+function saveEnabledMap(v)    { localStorage.setItem('ecotv_src_on',    JSON.stringify(v)); }
+
+function isEnabled(id) {
+  const map = getEnabledMap();
+  return map[id] !== false; // default true
+}
+
+// ── NETWORK ────────────────────────────────────────────────────────
+function fetchTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
+
+async function fetchWithProxy(url) {
+  try {
+    const r = await fetchTimeout(url, 8000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.text();
+  } catch {
+    const r = await fetchTimeout(CORS_PROXY + encodeURIComponent(url), 14000);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.text();
+  }
+}
+
+// ── INIT ───────────────────────────────────────────────────────────
+async function init() {
+  $('channel-count').innerHTML = 'Loading…';
+  allChannels = [];
+
+  // Built-in sources (synchronous)
+  for (const src of BUILTIN_SOURCES) {
+    if (!isEnabled(src.id)) continue;
+    const chs = parseM3U8(src.data);
+    chs.forEach(c => { c._srcId = src.id; c._srcName = src.name; });
+    allChannels.push(...chs);
+  }
+
+  // User custom sources (async fetch)
+  for (const src of getUserSources()) {
+    if (!isEnabled(src.id)) continue;
+    try {
+      const text = await fetchWithProxy(src.url);
+      const chs  = parseM3U8(text);
+      chs.forEach(c => { c._srcId = src.id; c._srcName = src.name; });
+      allChannels.push(...chs);
+    } catch(e) {
+      console.warn('Source load failed:', src.name, e.message);
+    }
+  }
+
+  bootstrap();
+}
+
+// ── PARSE M3U8 ─────────────────────────────────────────────────────
+function parseM3U8(text) {
+  const lines    = text.split('\n');
+  const channels = [];
+  let meta = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith('#EXTINF:')) {
+      meta = {};
+      const logoM    = line.match(/tvg-logo="([^"]*)"/);
+      const nameM    = line.match(/tvg-name="([^"]*)"/);
+      const groupM   = line.match(/group-title="([^"]*)"/);
+      const countryM = line.match(/tvg-country="([^"]*)"/);
+      const idM      = line.match(/tvg-id="([^"]*)"/);
+      const commaIdx = line.lastIndexOf(',');
+      meta.name    = (commaIdx >= 0 ? line.slice(commaIdx+1).trim() : '') || (nameM?.[1]) || 'Unknown';
+      meta.logo    = logoM?.[1]    || '';
+      meta.group   = groupM?.[1]   || 'Other';
+      meta.country = countryM?.[1] || '';
+      meta.id      = idM?.[1]      || '';
+    } else if (meta && line && !line.startsWith('#')) {
+      meta.url = line;
+      channels.push(meta);
+      meta = null;
+    }
+  }
+  return channels;
+}
+
+// ── BOOTSTRAP ──────────────────────────────────────────────────────
+function bootstrap() {
+  $('channel-count').innerHTML = `<strong>${allChannels.length}</strong> channels`;
+  $('group-tabs').innerHTML = '';
+  const groups = ['All', ...new Set(allChannels.map(c => c.group).filter(Boolean).sort())];
+  groups.slice(0, 14).forEach(g => {
+    const btn = document.createElement('button');
+    btn.className = 'gtab' + (g === activeGroup ? ' active' : '');
+    btn.textContent = g;
+    btn.onclick = () => selectGroup(g, btn);
+    $('group-tabs').appendChild(btn);
+  });
+  applyFilters();
+  buildFeatured();
+}
+
+function selectGroup(g, btn) {
+  activeGroup = g;
+  document.querySelectorAll('.gtab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+// ── FILTER ─────────────────────────────────────────────────────────
+function applyFilters() {
+  const q = $('search').value.toLowerCase().trim();
+  filtered = allChannels.filter(c => {
+    const groupOk = activeGroup === 'All' || c.group === activeGroup;
+    const queryOk = !q || c.name.toLowerCase().includes(q) || (c.country||'').toLowerCase().includes(q) || (c.group||'').toLowerCase().includes(q);
+    return groupOk && queryOk;
+  });
+  renderList();
+}
+$('search').addEventListener('input', applyFilters);
+
+// ── RENDER LIST ────────────────────────────────────────────────────
+function renderList() {
+  const list = $('channel-list');
+  list.innerHTML = '';
+  if (!filtered.length) { list.innerHTML = '<div class="empty">No channels found</div>'; return; }
+  const frag = document.createDocumentFragment();
+  filtered.forEach((ch, i) => {
+    const globalIdx = allChannels.indexOf(ch);
+    const el = document.createElement('div');
+    el.className = 'channel-item' + (globalIdx === currentIndex ? ' active' : '');
+    el.dataset.idx = globalIdx;
+    const logoEl = ch.logo
+      ? `<img class="ch-logo" src="${ch.logo}" alt="" onerror="this.style.display='none';this.nextSibling.style.display='flex'" /><div class="ch-logo-fallback" style="display:none">${abbrev(ch.name)}</div>`
+      : `<div class="ch-logo-fallback">${abbrev(ch.name)}</div>`;
+    el.innerHTML = `${logoEl}<div class="ch-info"><div class="ch-name">${esc(ch.name)}</div><div class="ch-country">${ch.country || ch.group || ''}</div></div><div class="ch-num">${String(i+1).padStart(3,'0')}</div>`;
+    el.addEventListener('click', () => {
+      playChannel(globalIdx);
+      // Close sidebar on mobile
+      if (window.innerWidth <= 768) closeSidebar();
+    });
+    frag.appendChild(el);
+  });
+  list.appendChild(frag);
+}
+
+// ── PLAY ───────────────────────────────────────────────────────────
+function playChannel(idx) {
+  currentIndex = idx;
+  const ch = allChannels[idx];
+  if (!ch) return;
+
+  document.querySelectorAll('.channel-item').forEach(el => el.classList.toggle('active', parseInt(el.dataset.idx) === idx));
+  $('placeholder').style.display = 'none';
+  showLoading(true);
+  showError(false);
+
+  $('now-name').textContent  = ch.name;
+  $('now-name').style.color  = '';
+  $('now-meta').textContent  = [ch.group, ch.country, ch._srcName].filter(Boolean).join(' · ');
+  $('live-badge').style.display = 'flex';
+
+  const nowLogo = $('now-logo');
+  if (ch.logo) { nowLogo.src = ch.logo; nowLogo.style.display = ''; nowLogo.onerror = () => nowLogo.style.display = 'none'; }
+  else { nowLogo.style.display = 'none'; }
+
+  renderStreamInfo(ch);
+
+  const video = $('video-el');
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+  video.pause();
+
+  if (Hls.isSupported()) {
+    hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true });
+    hlsInstance.loadSource(ch.url);
+    hlsInstance.attachMedia(video);
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { showLoading(false); video.play().catch(()=>{}); });
+    hlsInstance.on(Hls.Events.ERROR, (e, data) => { if (data.fatal) { showLoading(false); showError(true, data.type); } });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = ch.url;
+    video.addEventListener('loadedmetadata', () => { showLoading(false); video.play().catch(()=>{}); }, { once: true });
+    video.addEventListener('error', () => { showLoading(false); showError(true); }, { once: true });
+  } else {
+    showLoading(false); showError(true, 'HLS not supported in this browser');
+  }
+}
+
+function showLoading(v) { $('loading-overlay').classList.toggle('show', v); }
+function showError(v, msg) { $('error-overlay').classList.toggle('show', v); if (msg) $('error-msg').textContent = String(msg); }
+$('retry-btn').addEventListener('click', () => { if (currentIndex >= 0) playChannel(currentIndex); });
+
+// ── FEATURED ───────────────────────────────────────────────────────
+function buildFeatured() {
+  const grid = $('featured-grid');
+  const pick = allChannels.filter(c => c.logo).slice(0, 24);
+  if (!pick.length) { grid.innerHTML = '<div class="empty">No featured channels</div>'; return; }
+  grid.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  pick.forEach(ch => {
+    const tile = document.createElement('div');
+    tile.className = 'feat-tile';
+    tile.innerHTML = `<img src="${ch.logo}" alt="${esc(ch.name)}" onerror="this.style.display='none'" /><div class="fn">${esc(ch.name)}</div><div class="fc">${ch.country || ch.group}</div>`;
+    tile.addEventListener('click', () => { playChannel(allChannels.indexOf(ch)); if (window.innerWidth <= 768) closeSidebar(); });
+    frag.appendChild(tile);
+  });
+  grid.appendChild(frag);
+}
+
+// ── STREAM INFO ────────────────────────────────────────────────────
+function renderStreamInfo(ch) {
+  const rows = [['Name', ch.name], ['Group', ch.group||'—'], ['Country', ch.country||'—'], ['Source', ch._srcName||'—'], ['URL', ch.url], ['Logo', ch.logo||'—']];
+  $('stream-details').innerHTML = rows.map(([k,v]) => `<div class="info-row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('');
+}
+
+// ── TABS ───────────────────────────────────────────────────────────
+document.querySelectorAll('.btab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.btab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const t = btn.dataset.tab;
+    $('featured-content').classList.toggle('show', t === 'featured');
+    $('info-content').classList.toggle('show', t === 'info');
+  });
+});
+
+// ── HAMBURGER / MOBILE SIDEBAR ─────────────────────────────────────
+function closeSidebar() {
+  $('sidebar').classList.remove('open');
+  $('sidebar-overlay').classList.remove('show');
+  $('hamburger-btn').classList.remove('open');
+}
+
+$('hamburger-btn').addEventListener('click', () => {
+  const isOpen = $('sidebar').classList.toggle('open');
+  $('sidebar-overlay').classList.toggle('show', isOpen);
+  $('hamburger-btn').classList.toggle('open', isOpen);
+});
+$('sidebar-overlay').addEventListener('click', closeSidebar);
+
+// ── ADD M3U8 MODAL (quick add, goes to sources) ────────────────────
+$('load-playlist-btn').addEventListener('click', () => {
+  $('add-modal-name').value = '';
+  $('add-modal-url').value  = '';
+  $('add-modal-status').textContent = '';
+  $('add-modal-status').className   = 'modal-status';
+  $('add-modal-submit').disabled    = false;
+  $('add-modal-backdrop').classList.add('show');
+  setTimeout(() => $('add-modal-name').focus(), 50);
+});
+$('add-modal-cancel').addEventListener('click', () => $('add-modal-backdrop').classList.remove('show'));
+$('add-modal-backdrop').addEventListener('click', e => { if (e.target === $('add-modal-backdrop')) $('add-modal-backdrop').classList.remove('show'); });
+$('add-modal-url').addEventListener('keydown', e => { if (e.key === 'Enter') $('add-modal-submit').click(); });
+
+$('add-modal-submit').addEventListener('click', async () => {
+  const name = $('add-modal-name').value.trim() || 'Custom Source';
+  const url  = $('add-modal-url').value.trim();
+  if (!url) { setAddStatus('Please enter a URL.', 'error'); return; }
+  try { new URL(url); } catch { setAddStatus('Invalid URL.', 'error'); return; }
+
+  $('add-modal-submit').disabled = true;
+  setAddStatus('Fetching playlist…', '');
+  try {
+    const text = await fetchWithProxy(url);
+    const chs  = parseM3U8(text);
+    if (!chs.length) throw new Error('No channels found in playlist');
+
+    const id   = 'user-' + Date.now();
+    const srcs = getUserSources();
+    srcs.push({ id, name, url });
+    saveUserSources(srcs);
+
+    setAddStatus(`Added! ${chs.length} channels. Reloading…`, 'ok');
+    setTimeout(() => { $('add-modal-backdrop').classList.remove('show'); init(); }, 1200);
+  } catch(e) {
+    setAddStatus('Failed: ' + e.message, 'error');
+    $('add-modal-submit').disabled = false;
+  }
+});
+function setAddStatus(msg, type) { const el = $('add-modal-status'); el.textContent = msg; el.className = 'modal-status ' + type; }
+
+// ── SOURCES MODAL ──────────────────────────────────────────────────
+$('sources-btn').addEventListener('click', openSourcesModal);
+$('sources-close-btn').addEventListener('click', closeSourcesModal);
+$('sources-modal-backdrop').addEventListener('click', e => { if (e.target === $('sources-modal-backdrop')) closeSourcesModal(); });
+
+function openSourcesModal() {
+  renderSourcesList();
+  $('sources-status').textContent = '';
+  $('sources-status').className   = 'modal-status';
+  $('new-source-name').value = '';
+  $('new-source-url').value  = '';
+  $('sources-modal-backdrop').classList.add('show');
+}
+function closeSourcesModal() { $('sources-modal-backdrop').classList.remove('show'); }
+
+function renderSourcesList() {
+  const enabledMap = getEnabledMap();
+  const userSrcs   = getUserSources();
+  const list = $('sources-list');
+  list.innerHTML = '';
+
+  const all = [
+    ...BUILTIN_SOURCES.map(s => ({ ...s, builtin: true })),
+    ...userSrcs.map(s => ({ ...s, builtin: false })),
+  ];
+
+  all.forEach(src => {
+    const on  = enabledMap[src.id] !== false;
+    const ch  = allChannels.filter(c => c._srcId === src.id).length;
+    const el  = document.createElement('div');
+    el.className = 'source-item' + (on ? '' : ' disabled');
+    el.innerHTML = `
+      <div class="source-dot ${on ? '' : 'off'}"></div>
+      <div class="source-name">${esc(src.name)}</div>
+      ${ch ? `<span class="source-count">${ch} ch</span>` : ''}
+      <span class="src-badge ${src.builtin ? 'builtin' : ''}">${src.builtin ? 'Built-in' : 'Custom'}</span>
+      <button class="src-toggle ${on ? 'on' : ''}" data-id="${src.id}" title="${on ? 'Disable' : 'Enable'}"></button>
+      ${src.builtin ? '' : `<button class="src-del" data-id="${src.id}" title="Remove">✕</button>`}
+    `;
+    list.appendChild(el);
+  });
+
+  list.querySelectorAll('.src-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const map = getEnabledMap();
+      map[btn.dataset.id] = !btn.classList.contains('on');
+      saveEnabledMap(map);
+      renderSourcesList();
+    });
+  });
+  list.querySelectorAll('.src-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const srcs = getUserSources().filter(s => s.id !== btn.dataset.id);
+      saveUserSources(srcs);
+      const map = getEnabledMap();
+      delete map[btn.dataset.id];
+      saveEnabledMap(map);
+      renderSourcesList();
+    });
+  });
+}
+
+$('add-source-submit').addEventListener('click', async () => {
+  const name = $('new-source-name').value.trim() || 'Custom Source';
+  const url  = $('new-source-url').value.trim();
+  if (!url) { setSrcStatus('Enter a URL.', 'error'); return; }
+  try { new URL(url); } catch { setSrcStatus('Invalid URL.', 'error'); return; }
+
+  $('add-source-submit').disabled = true;
+  setSrcStatus('Testing…', '');
+  try {
+    const text = await fetchWithProxy(url);
+    const chs  = parseM3U8(text);
+    if (!chs.length) throw new Error('No channels found');
+    const id   = 'user-' + Date.now();
+    const srcs = getUserSources();
+    srcs.push({ id, name, url });
+    saveUserSources(srcs);
+    $('new-source-name').value = '';
+    $('new-source-url').value  = '';
+    setSrcStatus(`Added! ${chs.length} channels found.`, 'ok');
+    renderSourcesList();
+  } catch(e) { setSrcStatus('Failed: ' + e.message, 'error'); }
+  $('add-source-submit').disabled = false;
+});
+
+$('sources-apply-btn').addEventListener('click', () => { closeSourcesModal(); init(); });
+
+function setSrcStatus(msg, type) { const el = $('sources-status'); el.textContent = msg; el.className = 'modal-status ' + type; }
+
+// ── KEYBOARD ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'Escape') { closeSidebar(); $('add-modal-backdrop').classList.remove('show'); closeSourcesModal(); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); if (currentIndex < allChannels.length-1) playChannel(currentIndex+1); }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); if (currentIndex > 0) playChannel(currentIndex-1); }
+});
+
+// ── UTILS ──────────────────────────────────────────────────────────
+function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function abbrev(n) { return (n||'?').replace(/[^A-Za-z0-9]/g,'').slice(0,2).toUpperCase() || '?'; }
+
+// ── LOGO ───────────────────────────────────────────────────────────
+(function() {
+  const img = $('logo-img');
+  if (!img) return;
+  img.onerror = () => img.classList.add('failed');
+  // If already errored (cached failure), add class immediately
+  if (img.complete && !img.naturalWidth) img.classList.add('failed');
+})();
+
+// ── ADMIN MODE ─────────────────────────────────────────────────────
+const ADMIN_PASSWORD = 'ecoadmin';
+const ADMIN_KEY      = 'ecotv_admin';
+
+function activateAdmin() {
+  sessionStorage.setItem(ADMIN_KEY, '1');
+  document.body.classList.add('admin-mode');
+}
+function deactivateAdmin() {
+  sessionStorage.removeItem(ADMIN_KEY);
+  document.body.classList.remove('admin-mode');
+}
+
+// Restore session
+if (sessionStorage.getItem(ADMIN_KEY)) activateAdmin();
+
+// Triple-click logo to open admin login
+let _logoClicks = 0, _logoTimer = null;
+$('logo').addEventListener('click', e => {
+  e.preventDefault();
+  _logoClicks++;
+  clearTimeout(_logoTimer);
+  if (_logoClicks >= 3) {
+    _logoClicks = 0;
+    if (document.body.classList.contains('admin-mode')) {
+      deactivateAdmin();
+    } else {
+      openAdminModal();
+    }
+  } else {
+    _logoTimer = setTimeout(() => { _logoClicks = 0; }, 700);
+  }
+});
+
+// Lock button — exit admin
+$('admin-lock').addEventListener('click', deactivateAdmin);
+
+function openAdminModal() {
+  $('admin-pwd-input').value   = '';
+  $('admin-pwd-status').textContent = '';
+  $('admin-pwd-status').className   = 'modal-status';
+  $('admin-modal-backdrop').classList.add('show');
+  setTimeout(() => $('admin-pwd-input').focus(), 50);
+}
+function closeAdminModal() { $('admin-modal-backdrop').classList.remove('show'); }
+
+$('admin-cancel-btn').addEventListener('click', closeAdminModal);
+$('admin-modal-backdrop').addEventListener('click', e => { if (e.target === $('admin-modal-backdrop')) closeAdminModal(); });
+$('admin-pwd-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('admin-login-btn').click(); });
+
+$('admin-login-btn').addEventListener('click', () => {
+  const pwd = $('admin-pwd-input').value;
+  if (pwd === ADMIN_PASSWORD) {
+    activateAdmin();
+    closeAdminModal();
+  } else {
+    const st = $('admin-pwd-status');
+    st.textContent = 'Incorrect password.';
+    st.className   = 'modal-status error';
+    $('admin-pwd-input').value = '';
+    $('admin-pwd-input').focus();
+  }
+});
+
+// ── START ──────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
