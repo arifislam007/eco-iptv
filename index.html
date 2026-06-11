@@ -421,7 +421,7 @@
     <h2>Add M3U8 URL</h2>
     <p class="modal-desc">Paste an M3U8 playlist URL — it will be added as a new source and saved for future visits.</p>
     <input class="modal-input" id="add-modal-name" type="text" placeholder="Source name (e.g. My IPTV)" autocomplete="off" />
-    <input class="modal-input" id="add-modal-url" type="url" placeholder="https://example.com/playlist.m3u8" autocomplete="off" spellcheck="false" />
+    <input class="modal-input" id="add-modal-url" type="text" placeholder="http:// or https://example.com/playlist.m3u8" autocomplete="off" spellcheck="false" />
     <div class="modal-status" id="add-modal-status"></div>
     <div class="modal-actions">
       <button class="modal-btn secondary" id="add-modal-cancel">Cancel</button>
@@ -439,7 +439,7 @@
       <h3>Add New Source</h3>
       <div class="src-row">
         <input id="new-source-name" type="text" placeholder="Source name" autocomplete="off" />
-        <input id="new-source-url" type="url" placeholder="https://…/playlist.m3u8" autocomplete="off" spellcheck="false" />
+        <input id="new-source-url" type="text" placeholder="http:// or https://…/playlist.m3u8" autocomplete="off" spellcheck="false" />
       </div>
       <div class="src-row" style="justify-content:space-between; align-items:center;">
         <div class="modal-status" id="sources-status" style="margin:0;min-height:auto"></div>
@@ -504,15 +504,18 @@ function fetchTimeout(url, ms) {
 }
 
 async function fetchWithProxy(url) {
-  try {
-    const r = await fetchTimeout(url, 8000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.text();
-  } catch {
-    const r = await fetchTimeout(CORS_PROXY + encodeURIComponent(url), 14000);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.text();
+  // HTTP URLs on an HTTPS page are blocked by mixed-content policy — go straight to proxy
+  const skipDirect = url.startsWith('http://') && location.protocol === 'https:';
+  if (!skipDirect) {
+    try {
+      const r = await fetchTimeout(url, 8000);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.text();
+    } catch {}
   }
+  const r = await fetchTimeout(CORS_PROXY + encodeURIComponent(url), 14000);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return await r.text();
 }
 
 // ── INIT ───────────────────────────────────────────────────────────
@@ -819,6 +822,8 @@ function renderSourcesList() {
   });
   list.querySelectorAll('.src-del').forEach(btn => {
     btn.addEventListener('click', () => {
+      const srcName = btn.closest('.source-item')?.querySelector('.source-name')?.textContent || 'this source';
+      if (!confirm(`Remove "${srcName}"? This cannot be undone.`)) return;
       const srcs = getUserSources().filter(s => s.id !== btn.dataset.id);
       saveUserSources(srcs);
       const map = getEnabledMap();
