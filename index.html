@@ -65,11 +65,12 @@
     #logo-img.failed + #logo-text { display: block; }
 
     /* Admin-only controls — hidden until admin unlocks */
-    #sources-btn, #load-playlist-btn, #play-url-btn, #add-channel-btn { display: none; }
+    #sources-btn, #load-playlist-btn, #play-url-btn, #add-channel-btn, #ad-manager-btn { display: none; }
     body.admin-mode #sources-btn,
     body.admin-mode #load-playlist-btn,
     body.admin-mode #play-url-btn,
-    body.admin-mode #add-channel-btn { display: flex; }
+    body.admin-mode #add-channel-btn,
+    body.admin-mode #ad-manager-btn { display: flex; }
 
     /* Admin lock indicator */
     #admin-lock {
@@ -193,6 +194,69 @@
     #error-overlay p { color: var(--accent2); font-size: 13px; text-align: center; max-width: 260px; }
     #retry-btn { padding: 8px 20px; background: var(--accent2); color: #fff; border: none; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
     #retry-btn:hover { opacity: .85; }
+
+    /* ── AD OVERLAY ── */
+    #ad-overlay {
+      position: absolute; left: 0; right: 0; z-index: 6;
+      display: none; justify-content: center; align-items: center;
+      padding: 0 12px; transition: opacity .4s;
+    }
+    #ad-overlay.show { display: flex; }
+    #ad-overlay.pos-bottom { bottom: 52px; }
+    #ad-overlay.pos-top    { top: 10px; }
+    #ad-inner {
+      position: relative; max-width: 96%; display: flex; align-items: center;
+      background: rgba(0,0,0,.72); border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.6); overflow: hidden;
+    }
+    #ad-inner.type-image { background: transparent; }
+    #ad-inner.type-image img { max-height: 90px; max-width: 100%; border-radius: 8px; display: block; }
+    #ad-inner.type-text  { padding: 10px 36px 10px 14px; gap: 10px; }
+    #ad-label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--accent); text-transform: uppercase; white-space: nowrap; flex-shrink: 0; }
+    #ad-text-content { font-size: 13px; color: #fff; line-height: 1.4; }
+    #ad-close-btn {
+      position: absolute; top: 4px; right: 4px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(255,255,255,.15); border: none; color: #fff;
+      font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background .15s;
+    }
+    #ad-close-btn:hover { background: rgba(255,255,255,.3); }
+    #ad-countdown { font-size: 9px; color: var(--muted); margin-left: 8px; white-space: nowrap; flex-shrink: 0; }
+
+    /* ── AD MANAGER MODAL ── */
+    #ad-manager-modal { width: min(560px, 94vw); max-height: 88vh; display: flex; flex-direction: column; gap: 14px; }
+    #ad-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; max-height: 260px; }
+    .ad-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    }
+    .ad-type-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; letter-spacing: 1px; text-transform: uppercase; flex-shrink: 0; }
+    .ad-type-badge.image { background: rgba(0,212,255,.15); color: var(--accent); }
+    .ad-type-badge.text  { background: rgba(255,92,92,.15);  color: var(--accent2); }
+    .ad-item-info { flex: 1; min-width: 0; }
+    .ad-item-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ad-item-meta { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #add-ad-section { border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    #add-ad-section h3 { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .8px; text-transform: uppercase; }
+    .ad-row { display: flex; gap: 8px; }
+    .ad-row input, .ad-row select, .ad-row textarea {
+      flex: 1; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 12px; outline: none; transition: border-color .2s;
+    }
+    .ad-row input:focus, .ad-row select:focus, .ad-row textarea:focus { border-color: var(--accent); }
+    .ad-row select { background: var(--bg); cursor: pointer; }
+    .ad-row textarea { resize: vertical; min-height: 60px; }
+    .ad-row input::placeholder, .ad-row textarea::placeholder { color: var(--muted); }
+    #ad-upload-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px; background: var(--card); border: 1px dashed var(--border);
+      border-radius: 8px; color: var(--muted); font-size: 12px; font-family: 'DM Sans', sans-serif;
+      cursor: pointer; transition: border-color .2s, color .2s; white-space: nowrap; flex-shrink: 0;
+    }
+    #ad-upload-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #ad-upload-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+    #ad-upload-preview { max-height: 60px; max-width: 160px; border-radius: 6px; display: none; border: 1px solid var(--border); object-fit: contain; }
 
     #now-playing { padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
     #now-logo { width: 44px; height: 34px; object-fit: contain; border-radius: 6px; background: var(--card); padding: 3px; }
@@ -356,6 +420,13 @@
         </svg>
         <span class="btn-text">Play URL</span>
       </button>
+      <button class="topbar-btn" id="ad-manager-btn" title="Manage advertisements">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="5" width="20" height="14" rx="2"/>
+          <path d="M2 10h20"/>
+        </svg>
+        <span class="btn-text">Manage Ads</span>
+      </button>
       <button class="topbar-btn" id="add-channel-btn" title="Add direct channel">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
@@ -404,6 +475,16 @@
       <div id="error-overlay">
         <p id="error-msg">Stream unavailable or unsupported</p>
         <button id="retry-btn">Retry</button>
+      </div>
+      <!-- AD OVERLAY -->
+      <div id="ad-overlay" class="pos-bottom">
+        <div id="ad-inner">
+          <span id="ad-label">Ad</span>
+          <img id="ad-img" src="" alt="Advertisement" style="display:none" />
+          <span id="ad-text-content" style="display:none"></span>
+          <span id="ad-countdown"></span>
+          <button id="ad-close-btn" title="Close ad">✕</button>
+        </div>
       </div>
     </div>
 
@@ -463,6 +544,58 @@
     <div class="modal-actions" style="border-top:1px solid var(--border);padding-top:14px;margin-top:0">
       <button class="modal-btn secondary" id="sources-close-btn">Close</button>
       <button class="modal-btn primary" id="sources-apply-btn">Apply &amp; Reload</button>
+    </div>
+  </div>
+</div>
+
+<!-- AD MANAGER MODAL -->
+<div class="modal-backdrop" id="ad-manager-backdrop">
+  <div class="modal-box" id="ad-manager-modal">
+    <h2>Ad Manager</h2>
+    <p class="modal-desc">Configure banners or text ads that display over the live player. Ads rotate automatically during playback.</p>
+    <div id="ad-list"><div class="empty">No ads configured yet.</div></div>
+    <div id="add-ad-section">
+      <h3>Add New Ad</h3>
+      <div class="ad-row">
+        <select id="ad-type">
+          <option value="image">Image / Graphic Banner</option>
+          <option value="text">Text Banner</option>
+        </select>
+        <select id="ad-position">
+          <option value="bottom">Bottom</option>
+          <option value="top">Top</option>
+        </select>
+      </div>
+      <div class="ad-row">
+        <input id="ad-label-input" type="text" placeholder="Ad name / label (e.g. Sponsor Banner)" autocomplete="off" />
+      </div>
+      <div class="ad-row" id="ad-content-row" style="flex-direction:column;gap:6px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="ad-content-input" type="text" placeholder="Image URL (https://…/banner.jpg)" autocomplete="off" spellcheck="false" />
+          <span style="color:var(--muted);font-size:11px;flex-shrink:0">or</span>
+          <label id="ad-upload-btn" title="Upload image from device">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload
+            <input id="ad-file-input" type="file" accept="image/*" style="display:none" />
+          </label>
+        </div>
+        <img id="ad-upload-preview" alt="Preview" />
+      </div>
+      <div class="ad-row" id="ad-text-row" style="display:none">
+        <textarea id="ad-text-input" placeholder="Ad text content…"></textarea>
+      </div>
+      <div class="ad-row">
+        <input id="ad-link-input" type="text" placeholder="Click-through URL (optional)" autocomplete="off" spellcheck="false" />
+        <input id="ad-duration-input" type="number" placeholder="Show (sec)" value="15" min="5" max="120" style="max-width:110px" />
+        <input id="ad-gap-input" type="number" placeholder="Gap (sec)" value="60" min="10" max="600" style="max-width:110px" />
+      </div>
+      <div class="modal-status" id="ad-status"></div>
+      <div class="modal-actions" style="justify-content:flex-start">
+        <button class="modal-btn primary" id="ad-add-btn">Add Ad</button>
+      </div>
+    </div>
+    <div class="modal-actions" style="border-top:1px solid var(--border);padding-top:14px;margin-top:0">
+      <button class="modal-btn secondary" id="ad-manager-close">Close</button>
     </div>
   </div>
 </div>
@@ -733,11 +866,11 @@ function playChannel(idx) {
     hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true });
     hlsInstance.loadSource(ch.url);
     hlsInstance.attachMedia(video);
-    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { showLoading(false); video.play().catch(()=>{}); });
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { showLoading(false); video.play().catch(()=>{}); startAds(); });
     hlsInstance.on(Hls.Events.ERROR, (e, data) => { if (data.fatal) { showLoading(false); showError(true, data.type); } });
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = ch.url;
-    video.addEventListener('loadedmetadata', () => { showLoading(false); video.play().catch(()=>{}); }, { once: true });
+    video.addEventListener('loadedmetadata', () => { showLoading(false); video.play().catch(()=>{}); startAds(); }, { once: true });
     video.addEventListener('error', () => { showLoading(false); showError(true); }, { once: true });
   } else {
     showLoading(false); showError(true, 'HLS not supported in this browser');
@@ -745,7 +878,11 @@ function playChannel(idx) {
 }
 
 function showLoading(v) { $('loading-overlay').classList.toggle('show', v); }
-function showError(v, msg) { $('error-overlay').classList.toggle('show', v); if (msg) $('error-msg').textContent = String(msg); }
+function showError(v, msg) {
+  $('error-overlay').classList.toggle('show', v);
+  if (msg) $('error-msg').textContent = String(msg);
+  if (v) stopAds(); // stop ads on error
+}
 
 // ── PLAY DIRECT URL ────────────────────────────────────────────────
 function openPlayUrlModal() {
@@ -777,11 +914,11 @@ function playDirect(url, name) {
     hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true });
     hlsInstance.loadSource(url);
     hlsInstance.attachMedia(video);
-    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { showLoading(false); video.play().catch(()=>{}); });
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { showLoading(false); video.play().catch(()=>{}); startAds(); });
     hlsInstance.on(Hls.Events.ERROR, (e, data) => { if (data.fatal) { showLoading(false); showError(true, data.type); } });
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = url;
-    video.addEventListener('loadedmetadata', () => { showLoading(false); video.play().catch(()=>{}); }, { once: true });
+    video.addEventListener('loadedmetadata', () => { showLoading(false); video.play().catch(()=>{}); startAds(); }, { once: true });
     video.addEventListener('error', () => { showLoading(false); showError(true); }, { once: true });
   } else {
     showLoading(false); showError(true, 'HLS not supported in this browser');
@@ -832,6 +969,200 @@ $('ac-submit').addEventListener('click', () => {
   setTimeout(() => { closeAddChannelModal(); init(); }, 900);
 });
 $('retry-btn').addEventListener('click', () => { if (currentIndex >= 0) playChannel(currentIndex); });
+
+// ── AD SYSTEM ──────────────────────────────────────────────────────
+function getAds()   { return JSON.parse(localStorage.getItem('ecotv_ads') || '[]'); }
+function saveAds(v) { localStorage.setItem('ecotv_ads', JSON.stringify(v)); }
+
+let _adTimer = null, _adIdx = 0, _adCountTimer = null;
+
+function startAds() {
+  stopAds();
+  const ads = getAds().filter(a => a.enabled !== false);
+  if (!ads.length) return;
+  _adIdx = 0;
+  scheduleAd(ads, 3000); // first ad after 3s
+}
+
+function scheduleAd(ads, delay) {
+  _adTimer = setTimeout(() => {
+    if (!ads.length) return;
+    _adIdx = _adIdx % ads.length;
+    showAdOverlay(ads[_adIdx]);
+    const dur = (ads[_adIdx].duration || 15) * 1000;
+    _adTimer = setTimeout(() => {
+      hideAdOverlay();
+      _adIdx++;
+      scheduleAd(ads, (ads[_adIdx % ads.length]?.gap || 60) * 1000);
+    }, dur);
+  }, delay);
+}
+
+function stopAds() {
+  clearTimeout(_adTimer);
+  clearInterval(_adCountTimer);
+  hideAdOverlay();
+}
+
+function showAdOverlay(ad) {
+  const overlay = $('ad-overlay');
+  const inner   = $('ad-inner');
+  overlay.className = 'show pos-' + (ad.position || 'bottom');
+  inner.className   = 'type-' + ad.type;
+
+  $('ad-img').style.display          = 'none';
+  $('ad-text-content').style.display = 'none';
+
+  if (ad.type === 'image') {
+    const img = $('ad-img');
+    img.src = ad.content;
+    img.style.display = 'block';
+    inner.onclick = ad.link ? () => window.open(ad.link, '_blank') : null;
+    inner.style.cursor = ad.link ? 'pointer' : 'default';
+  } else {
+    const txt = $('ad-text-content');
+    txt.textContent    = ad.content;
+    txt.style.display  = 'inline';
+    inner.onclick = ad.link ? () => window.open(ad.link, '_blank') : null;
+    inner.style.cursor = ad.link ? 'pointer' : 'default';
+  }
+
+  // countdown
+  let rem = ad.duration || 15;
+  $('ad-countdown').textContent = rem + 's';
+  clearInterval(_adCountTimer);
+  _adCountTimer = setInterval(() => {
+    rem--;
+    $('ad-countdown').textContent = rem > 0 ? rem + 's' : '';
+    if (rem <= 0) clearInterval(_adCountTimer);
+  }, 1000);
+}
+
+function hideAdOverlay() {
+  $('ad-overlay').classList.remove('show');
+  clearInterval(_adCountTimer);
+}
+
+$('ad-close-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  clearTimeout(_adTimer);
+  clearInterval(_adCountTimer);
+  hideAdOverlay();
+  // reschedule next ad
+  const ads = getAds().filter(a => a.enabled !== false);
+  if (ads.length) { _adIdx++; scheduleAd(ads, (ads[_adIdx % ads.length]?.gap || 60) * 1000); }
+});
+
+// ── AD MANAGER MODAL ───────────────────────────────────────────────
+function openAdManager() {
+  renderAdList();
+  $('ad-manager-backdrop').classList.add('show');
+}
+function closeAdManager() { $('ad-manager-backdrop').classList.remove('show'); }
+
+function renderAdList() {
+  const ads  = getAds();
+  const list = $('ad-list');
+  if (!ads.length) { list.innerHTML = '<div class="empty">No ads configured yet.</div>'; return; }
+  list.innerHTML = '';
+  ads.forEach((ad, i) => {
+    const el = document.createElement('div');
+    el.className = 'ad-item' + (ad.enabled === false ? ' disabled' : '');
+    el.innerHTML = `
+      <span class="ad-type-badge ${ad.type}">${ad.type}</span>
+      <div class="ad-item-info">
+        <div class="ad-item-name">${esc(ad.label || 'Untitled')}</div>
+        <div class="ad-item-meta">${esc(ad.content)} · ${ad.duration||15}s show · ${ad.gap||60}s gap · ${ad.position||'bottom'}</div>
+      </div>
+      <button class="src-toggle ${ad.enabled !== false ? 'on' : ''}" data-i="${i}" title="Toggle"></button>
+      <button class="src-del" data-i="${i}" title="Delete">✕</button>
+    `;
+    list.appendChild(el);
+  });
+  list.querySelectorAll('.src-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ads = getAds(); ads[+btn.dataset.i].enabled = !btn.classList.contains('on');
+      saveAds(ads); renderAdList();
+    });
+  });
+  list.querySelectorAll('.src-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ads = getAds();
+      const name = ads[+btn.dataset.i]?.label || 'this ad';
+      if (!confirm(`Remove "${name}"?`)) return;
+      ads.splice(+btn.dataset.i, 1);
+      saveAds(ads); renderAdList();
+    });
+  });
+}
+
+// toggle image/text content field
+$('ad-type').addEventListener('change', () => {
+  const isImg = $('ad-type').value === 'image';
+  $('ad-content-row').style.display = isImg ? ''     : 'none';
+  $('ad-text-row').style.display    = isImg ? 'none' : '';
+});
+
+// file upload → base64
+let _adUploadedBase64 = null;
+$('ad-file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    _adUploadedBase64 = ev.target.result;
+    const preview = $('ad-upload-preview');
+    preview.src = _adUploadedBase64;
+    preview.style.display = 'block';
+    $('ad-content-input').value = ''; // clear URL field
+    $('ad-content-input').placeholder = '(using uploaded image)';
+  };
+  reader.readAsDataURL(file);
+});
+
+// clear upload when URL field is typed
+$('ad-content-input').addEventListener('input', () => {
+  if ($('ad-content-input').value) {
+    _adUploadedBase64 = null;
+    $('ad-upload-preview').style.display = 'none';
+    $('ad-file-input').value = '';
+    $('ad-content-input').placeholder = 'Image URL (https://…/banner.jpg)';
+  }
+});
+
+$('ad-manager-btn').addEventListener('click', openAdManager);
+$('ad-manager-close').addEventListener('click', closeAdManager);
+$('ad-manager-backdrop').addEventListener('click', e => { if (e.target === $('ad-manager-backdrop')) closeAdManager(); });
+
+$('ad-add-btn').addEventListener('click', () => {
+  const type     = $('ad-type').value;
+  const label    = $('ad-label-input').value.trim();
+  const status   = $('ad-status');
+  let content;
+  if (type === 'image') {
+    content = _adUploadedBase64 || $('ad-content-input').value.trim();
+  } else {
+    content = $('ad-text-input').value.trim();
+  }
+  const link     = $('ad-link-input').value.trim();
+  const duration = parseInt($('ad-duration-input').value) || 15;
+  const gap      = parseInt($('ad-gap-input').value)      || 60;
+  const position = $('ad-position').value;
+  if (!label)   { status.textContent = 'Enter an ad name.';    status.className = 'modal-status error'; return; }
+  if (!content) { status.textContent = 'Upload an image or enter a URL / text.'; status.className = 'modal-status error'; return; }
+  const ads = getAds();
+  ads.push({ id: 'ad-' + Date.now(), type, label, content, link, duration, gap, position, enabled: true });
+  saveAds(ads);
+  ['ad-label-input','ad-content-input','ad-text-input','ad-link-input'].forEach(id => $(id).value = '');
+  $('ad-duration-input').value = 15; $('ad-gap-input').value = 60;
+  $('ad-upload-preview').style.display = 'none';
+  $('ad-file-input').value = '';
+  $('ad-content-input').placeholder = 'Image URL (https://…/banner.jpg)';
+  _adUploadedBase64 = null;
+  status.textContent = 'Ad saved!'; status.className = 'modal-status ok';
+  renderAdList();
+  setTimeout(() => { status.textContent = ''; status.className = 'modal-status'; }, 2000);
+});
 
 // ── FEATURED ───────────────────────────────────────────────────────
 function buildFeatured() {
@@ -1017,7 +1348,7 @@ function setSrcStatus(msg, type) { const el = $('sources-status'); el.textConten
 // ── KEYBOARD ───────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
-  if (e.key === 'Escape') { closeSidebar(); $('add-modal-backdrop').classList.remove('show'); closeSourcesModal(); closePlayUrlModal(); closeAddChannelModal(); }
+  if (e.key === 'Escape') { closeSidebar(); $('add-modal-backdrop').classList.remove('show'); closeSourcesModal(); closePlayUrlModal(); closeAddChannelModal(); closeAdManager(); }
   if (e.key === 'ArrowDown') { e.preventDefault(); if (currentIndex < allChannels.length-1) playChannel(currentIndex+1); }
   if (e.key === 'ArrowUp')   { e.preventDefault(); if (currentIndex > 0) playChannel(currentIndex-1); }
 });
