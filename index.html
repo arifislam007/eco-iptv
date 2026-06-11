@@ -65,10 +65,11 @@
     #logo-img.failed + #logo-text { display: block; }
 
     /* Admin-only controls — hidden until admin unlocks */
-    #sources-btn, #load-playlist-btn, #play-url-btn { display: none; }
+    #sources-btn, #load-playlist-btn, #play-url-btn, #add-channel-btn { display: none; }
     body.admin-mode #sources-btn,
     body.admin-mode #load-playlist-btn,
-    body.admin-mode #play-url-btn { display: flex; }
+    body.admin-mode #play-url-btn,
+    body.admin-mode #add-channel-btn { display: flex; }
 
     /* Admin lock indicator */
     #admin-lock {
@@ -355,6 +356,12 @@
         </svg>
         <span class="btn-text">Play URL</span>
       </button>
+      <button class="topbar-btn" id="add-channel-btn" title="Add direct channel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+        <span class="btn-text">Add Channel</span>
+      </button>
       <button class="topbar-btn" id="load-playlist-btn" title="Load M3U8 URL">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -460,6 +467,23 @@
   </div>
 </div>
 
+<!-- ADD CHANNEL MODAL -->
+<div class="modal-backdrop" id="add-channel-backdrop">
+  <div class="modal-box">
+    <h2>Add Channel</h2>
+    <p class="modal-desc">Save a direct stream URL as a permanent channel in the sidebar.</p>
+    <input class="modal-input" id="ac-name"  type="text" placeholder="Channel name (e.g. FIFA World Cup 2026)" autocomplete="off" />
+    <input class="modal-input" id="ac-url"   type="text" placeholder="Stream URL (http:// or https://)" autocomplete="off" spellcheck="false" />
+    <input class="modal-input" id="ac-logo"  type="text" placeholder="Logo URL or filename (optional)" autocomplete="off" spellcheck="false" />
+    <input class="modal-input" id="ac-group" type="text" placeholder="Group / Category (optional)" autocomplete="off" />
+    <div class="modal-status" id="ac-status"></div>
+    <div class="modal-actions">
+      <button class="modal-btn secondary" id="ac-cancel">Cancel</button>
+      <button class="modal-btn primary"   id="ac-submit">Save Channel</button>
+    </div>
+  </div>
+</div>
+
 <!-- PLAY DIRECT URL MODAL -->
 <div class="modal-backdrop" id="play-url-backdrop">
   <div class="modal-box">
@@ -515,6 +539,8 @@ const BUILTIN_SOURCES = [
 
 function getUserSources()     { return JSON.parse(localStorage.getItem('ecotv_user_src')  || '[]'); }
 function saveUserSources(v)   { localStorage.setItem('ecotv_user_src',  JSON.stringify(v)); }
+function getCustomChannels()  { return JSON.parse(localStorage.getItem('ecotv_custom_ch') || '[]'); }
+function saveCustomChannels(v){ localStorage.setItem('ecotv_custom_ch', JSON.stringify(v)); }
 function getEnabledMap()      { return JSON.parse(localStorage.getItem('ecotv_src_on')    || '{}'); }
 function saveEnabledMap(v)    { localStorage.setItem('ecotv_src_on',    JSON.stringify(v)); }
 
@@ -552,6 +578,9 @@ async function init() {
 
   // Pinned channels always come first
   allChannels.push(...PINNED_CHANNELS);
+
+  // User-added direct channels (saved via Add Channel)
+  getCustomChannels().forEach(c => allChannels.push({ ...c, _srcId: 'custom-ch', _srcName: 'Custom Channel' }));
 
   // Built-in sources (synchronous)
   for (const src of BUILTIN_SOURCES) {
@@ -770,6 +799,37 @@ $('play-url-submit').addEventListener('click', () => {
   closePlayUrlModal();
   playDirect(url, name);
 });
+
+// ── ADD CHANNEL ────────────────────────────────────────────────────
+function openAddChannelModal() {
+  ['ac-name','ac-url','ac-logo','ac-group'].forEach(id => $(id).value = '');
+  $('ac-status').textContent = '';
+  $('ac-status').className   = 'modal-status';
+  $('add-channel-backdrop').classList.add('show');
+  setTimeout(() => $('ac-name').focus(), 50);
+}
+function closeAddChannelModal() { $('add-channel-backdrop').classList.remove('show'); }
+
+$('add-channel-btn').addEventListener('click', openAddChannelModal);
+$('ac-cancel').addEventListener('click', closeAddChannelModal);
+$('add-channel-backdrop').addEventListener('click', e => { if (e.target === $('add-channel-backdrop')) closeAddChannelModal(); });
+$('ac-url').addEventListener('keydown', e => { if (e.key === 'Enter') $('ac-submit').click(); });
+
+$('ac-submit').addEventListener('click', () => {
+  const name  = $('ac-name').value.trim();
+  const url   = $('ac-url').value.trim();
+  const logo  = $('ac-logo').value.trim();
+  const group = $('ac-group').value.trim() || 'Custom';
+  if (!name) { $('ac-status').textContent = 'Please enter a channel name.'; $('ac-status').className = 'modal-status error'; return; }
+  if (!url)  { $('ac-status').textContent = 'Please enter a stream URL.';   $('ac-status').className = 'modal-status error'; return; }
+  const ch = { id: 'ch-' + Date.now(), name, url, logo, group, country: '' };
+  const chs = getCustomChannels();
+  chs.push(ch);
+  saveCustomChannels(chs);
+  $('ac-status').textContent = `"${name}" saved!`;
+  $('ac-status').className   = 'modal-status ok';
+  setTimeout(() => { closeAddChannelModal(); init(); }, 900);
+});
 $('retry-btn').addEventListener('click', () => { if (currentIndex >= 0) playChannel(currentIndex); });
 
 // ── FEATURED ───────────────────────────────────────────────────────
@@ -956,7 +1016,7 @@ function setSrcStatus(msg, type) { const el = $('sources-status'); el.textConten
 // ── KEYBOARD ───────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
-  if (e.key === 'Escape') { closeSidebar(); $('add-modal-backdrop').classList.remove('show'); closeSourcesModal(); closePlayUrlModal(); }
+  if (e.key === 'Escape') { closeSidebar(); $('add-modal-backdrop').classList.remove('show'); closeSourcesModal(); closePlayUrlModal(); closeAddChannelModal(); }
   if (e.key === 'ArrowDown') { e.preventDefault(); if (currentIndex < allChannels.length-1) playChannel(currentIndex+1); }
   if (e.key === 'ArrowUp')   { e.preventDefault(); if (currentIndex > 0) playChannel(currentIndex-1); }
 });
