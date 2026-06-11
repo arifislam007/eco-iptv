@@ -7,14 +7,15 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+    depends_on:
+      - viewer-counter
 
   viewer-counter:
-    image: node:18-alpine
+    image: node:20-alpine
     container_name: freetv-viewer-counter
     working_dir: /app
     volumes:
       - ./viewer-server.js:/app/server.js
     command: sh -c "npm install ws && node server.js"
-    ports:
-      - "8081:8081"
     restart: unless-stopped
+    # No ports exposed — only reachable internally via nginx proxy
