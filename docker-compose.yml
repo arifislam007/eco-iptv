@@ -6,4 +6,6 @@ services:
     container_name: freetv-player
     ports:
       - "8080:80"
+    volumes:
+      - ~/freetv/playlist:/usr/share/nginx/html/playlist
     restart: unless-stopped
