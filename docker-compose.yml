@@ -7,3 +7,14 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+
+  viewer-counter:
+    image: node:18-alpine
+    container_name: freetv-viewer-counter
+    working_dir: /app
+    volumes:
+      - ./viewer-server.js:/app/server.js
+    command: sh -c "npm install ws && node server.js"
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
