@@ -65,12 +65,13 @@
     #logo-img.failed + #logo-text { display: block; }
 
     /* Admin-only controls — hidden until admin unlocks */
-    #sources-btn, #load-playlist-btn, #play-url-btn, #add-channel-btn, #ad-manager-btn { display: none; }
+    #sources-btn, #load-playlist-btn, #play-url-btn, #add-channel-btn, #ad-manager-btn, #ip-report-btn { display: none; }
     body.admin-mode #sources-btn,
     body.admin-mode #load-playlist-btn,
     body.admin-mode #play-url-btn,
     body.admin-mode #add-channel-btn,
-    body.admin-mode #ad-manager-btn { display: flex; }
+    body.admin-mode #ad-manager-btn,
+    body.admin-mode #ip-report-btn { display: flex; }
 
     /* Admin lock indicator */
     #admin-lock {
@@ -234,8 +235,11 @@
     #ad-countdown { font-size: 9px; color: var(--muted); margin-left: 8px; white-space: nowrap; flex-shrink: 0; }
 
     /* ── AD MANAGER MODAL ── */
-    #ad-manager-modal { width: min(560px, 94vw); max-height: 88vh; display: flex; flex-direction: column; gap: 14px; }
-    #ad-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; max-height: 260px; }
+    #ad-manager-modal { width: min(560px, 94vw); max-height: 90vh; display: flex; flex-direction: column; gap: 0; overflow: hidden; padding: 0; }
+    #ad-manager-modal > h2,
+    #ad-manager-modal > p.modal-desc { padding: 20px 26px 0; }
+    #ad-manager-scroll { flex: 1; overflow-y: auto; padding: 0 26px 26px; display: flex; flex-direction: column; gap: 14px; }
+    #ad-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
     .ad-item {
       display: flex; align-items: center; gap: 8px;
       padding: 9px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
@@ -266,6 +270,14 @@
     #ad-upload-btn:hover { border-color: var(--accent); color: var(--accent); }
     #ad-upload-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
     #ad-upload-preview { max-height: 60px; max-width: 160px; border-radius: 6px; display: none; border: 1px solid var(--border); object-fit: contain; }
+    .ip-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    }
+    .ip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); flex-shrink: 0; }
+    .ip-addr { flex: 1; color: var(--text); }
+    .ip-time { font-size: 10px; color: var(--muted); }
 
     #now-playing { padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
     #now-logo { width: 44px; height: 34px; object-fit: contain; border-radius: 6px; background: var(--card); padding: 3px; }
@@ -437,6 +449,13 @@
         </svg>
         <span class="btn-text">Manage Ads</span>
       </button>
+      <button class="topbar-btn" id="ip-report-btn" title="Connected clients report">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+          <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+        </svg>
+        <span class="btn-text">IP Report</span>
+      </button>
       <button class="topbar-btn" id="add-channel-btn" title="Add direct channel">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
@@ -570,49 +589,66 @@
   <div class="modal-box" id="ad-manager-modal">
     <h2>Ad Manager</h2>
     <p class="modal-desc">Configure banners or text ads that display over the live player. Ads rotate automatically during playback.</p>
-    <div id="ad-list"><div class="empty">No ads configured yet.</div></div>
-    <div id="add-ad-section">
-      <h3>Add New Ad</h3>
-      <div class="ad-row">
-        <select id="ad-type">
-          <option value="image">Image / Graphic Banner</option>
-          <option value="text">Text Banner</option>
-        </select>
-        <select id="ad-position">
-          <option value="bottom">Bottom</option>
-          <option value="top">Top</option>
-        </select>
-      </div>
-      <div class="ad-row">
-        <input id="ad-label-input" type="text" placeholder="Ad name / label (e.g. Sponsor Banner)" autocomplete="off" />
-      </div>
-      <div class="ad-row" id="ad-content-row" style="flex-direction:column;gap:6px">
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="ad-content-input" type="text" placeholder="Image URL (https://…/banner.jpg)" autocomplete="off" spellcheck="false" />
-          <span style="color:var(--muted);font-size:11px;flex-shrink:0">or</span>
-          <label id="ad-upload-btn" title="Upload image from device">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Upload
-            <input id="ad-file-input" type="file" accept="image/*" style="display:none" />
-          </label>
+    <div id="ad-manager-scroll">
+      <div id="ad-list"><div class="empty">No ads configured yet.</div></div>
+      <div id="add-ad-section">
+        <h3>Add New Ad</h3>
+        <div class="ad-row">
+          <select id="ad-type">
+            <option value="image">Image / Graphic Banner</option>
+            <option value="text">Text Banner</option>
+          </select>
+          <select id="ad-position">
+            <option value="bottom">Bottom</option>
+            <option value="top">Top</option>
+          </select>
         </div>
-        <img id="ad-upload-preview" alt="Preview" />
+        <div class="ad-row">
+          <input id="ad-label-input" type="text" placeholder="Ad name / label (e.g. Sponsor Banner)" autocomplete="off" />
+        </div>
+        <div class="ad-row" id="ad-content-row" style="flex-direction:column;gap:6px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="ad-content-input" type="text" placeholder="Image URL (https://…/banner.jpg)" autocomplete="off" spellcheck="false" />
+            <span style="color:var(--muted);font-size:11px;flex-shrink:0">or</span>
+            <button type="button" id="ad-upload-btn" title="Upload image from device">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Upload
+            </button>
+            <input id="ad-file-input" type="file" accept="image/*" style="display:none" />
+          </div>
+          <img id="ad-upload-preview" alt="Preview" />
+        </div>
+        <div class="ad-row" id="ad-text-row" style="display:none">
+          <textarea id="ad-text-input" placeholder="Ad text content…"></textarea>
+        </div>
+        <div class="ad-row">
+          <input id="ad-link-input" type="text" placeholder="Click-through URL (optional)" autocomplete="off" spellcheck="false" />
+          <input id="ad-duration-input" type="number" placeholder="Show (sec)" value="15" min="5" max="120" style="max-width:110px" />
+          <input id="ad-gap-input" type="number" placeholder="Gap (sec)" value="60" min="10" max="600" style="max-width:110px" />
+        </div>
+        <div class="modal-status" id="ad-status"></div>
+        <div class="modal-actions" style="justify-content:flex-start">
+          <button class="modal-btn primary" id="ad-add-btn">Add Ad</button>
+        </div>
       </div>
-      <div class="ad-row" id="ad-text-row" style="display:none">
-        <textarea id="ad-text-input" placeholder="Ad text content…"></textarea>
-      </div>
-      <div class="ad-row">
-        <input id="ad-link-input" type="text" placeholder="Click-through URL (optional)" autocomplete="off" spellcheck="false" />
-        <input id="ad-duration-input" type="number" placeholder="Show (sec)" value="15" min="5" max="120" style="max-width:110px" />
-        <input id="ad-gap-input" type="number" placeholder="Gap (sec)" value="60" min="10" max="600" style="max-width:110px" />
-      </div>
-      <div class="modal-status" id="ad-status"></div>
-      <div class="modal-actions" style="justify-content:flex-start">
-        <button class="modal-btn primary" id="ad-add-btn">Add Ad</button>
+      <div class="modal-actions" style="border-top:1px solid var(--border);padding-top:14px;margin-top:0">
+        <button class="modal-btn secondary" id="ad-manager-close">Close</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- IP REPORT MODAL -->
+<div class="modal-backdrop" id="ip-report-backdrop">
+  <div class="modal-box" style="width:min(600px,94vw);max-height:88vh;display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h2>Client IP Report</h2>
+      <button class="modal-btn secondary" id="ip-report-refresh" style="padding:6px 12px;font-size:11px">Refresh</button>
+    </div>
+    <p class="modal-desc" id="ip-report-summary">Loading…</p>
+    <div id="ip-report-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;max-height:400px"></div>
     <div class="modal-actions" style="border-top:1px solid var(--border);padding-top:14px;margin-top:0">
-      <button class="modal-btn secondary" id="ad-manager-close">Close</button>
+      <button class="modal-btn secondary" id="ip-report-close">Close</button>
     </div>
   </div>
 </div>
@@ -1122,6 +1158,7 @@ $('ad-type').addEventListener('change', () => {
 
 // file upload → base64
 let _adUploadedBase64 = null;
+$('ad-upload-btn').addEventListener('click', () => $('ad-file-input').click());
 $('ad-file-input').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -1365,7 +1402,7 @@ function setSrcStatus(msg, type) { const el = $('sources-status'); el.textConten
 // ── KEYBOARD ───────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
-  if (e.key === 'Escape') { closeSidebar(); $('add-modal-backdrop').classList.remove('show'); closeSourcesModal(); closePlayUrlModal(); closeAddChannelModal(); closeAdManager(); }
+  if (e.key === 'Escape') { closeSidebar(); $('add-modal-backdrop').classList.remove('show'); closeSourcesModal(); closePlayUrlModal(); closeAddChannelModal(); closeAdManager(); closeIpReport(); }
   if (e.key === 'ArrowDown') { e.preventDefault(); if (currentIndex < allChannels.length-1) playChannel(currentIndex+1); }
   if (e.key === 'ArrowUp')   { e.preventDefault(); if (currentIndex > 0) playChannel(currentIndex-1); }
 });
@@ -1446,6 +1483,38 @@ $('admin-login-btn').addEventListener('click', () => {
     $('admin-pwd-input').focus();
   }
 });
+
+// ── IP REPORT ──────────────────────────────────────────────────────
+function openIpReport() {
+  $('ip-report-backdrop').classList.add('show');
+  loadIpReport();
+}
+function closeIpReport() { $('ip-report-backdrop').classList.remove('show'); }
+
+async function loadIpReport() {
+  $('ip-report-summary').textContent = 'Loading…';
+  $('ip-report-list').innerHTML = '';
+  try {
+    const res  = await fetch('/api/clients');
+    const data = await res.json();
+    $('ip-report-summary').textContent = `${data.viewers} client${data.viewers !== 1 ? 's' : ''} currently connected`;
+    if (!data.clients.length) {
+      $('ip-report-list').innerHTML = '<div class="empty">No clients connected right now.</div>';
+      return;
+    }
+    $('ip-report-list').innerHTML = data.clients.map(c => {
+      const t = new Date(c.connectedAt).toLocaleTimeString();
+      return `<div class="ip-row"><div class="ip-dot"></div><span class="ip-addr">${esc(c.ip)}</span><span class="ip-time">Connected ${t}</span></div>`;
+    }).join('');
+  } catch {
+    $('ip-report-summary').textContent = 'Could not reach viewer-counter service.';
+  }
+}
+
+$('ip-report-btn').addEventListener('click', openIpReport);
+$('ip-report-close').addEventListener('click', closeIpReport);
+$('ip-report-refresh').addEventListener('click', loadIpReport);
+$('ip-report-backdrop').addEventListener('click', e => { if (e.target === $('ip-report-backdrop')) closeIpReport(); });
 
 // ── LIVE VIEWER COUNTER ────────────────────────────────────────────
 // WebSocket to viewer-server.js running on port 8081.
