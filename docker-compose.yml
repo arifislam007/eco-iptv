@@ -1,6 +1,14 @@
 version: "3.8"
 
 services:
+  viewer-counter:
+    build:
+      context: .
+      dockerfile: viewer.Dockerfile
+    container_name: freetv-viewer-counter
+    restart: unless-stopped
+    # No ports exposed — only reachable internally via nginx proxy
+
   iptv:
     build: .
     container_name: freetv-player
@@ -9,13 +17,3 @@ services:
     restart: unless-stopped
     depends_on:
       - viewer-counter
-
-  viewer-counter:
-    image: node:20-alpine
-    container_name: freetv-viewer-counter
-    working_dir: /app
-    volumes:
-      - ./viewer-server.js:/app/server.js
-    command: sh -c "npm install ws && node server.js"
-    restart: unless-stopped
-    # No ports exposed — only reachable internally via nginx proxy
