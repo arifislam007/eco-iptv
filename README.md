@@ -2,6 +2,43 @@
 
 A slick web-based IPTV player for the [Free-TV/IPTV](https://github.com/Free-TV/IPTV) open source playlist.
 
+## ✅ SRS Media Server Setup
+
+This repo now includes a lightweight SRS media server so a low-resource encoder can publish one feed and the server can handle all viewers.
+
+### Flow
+
+Encoder -> SRS on the server -> HTML player viewers
+
+### Publish URL
+
+Configure your encoder to publish to:
+
+```bash
+rtmp://172.27.28.2:1935/live/0
+```
+
+### Playback URL
+
+The browser player uses the same server host and plays:
+
+```bash
+http://172.27.28.2:8088/live/0.m3u8
+```
+
+### Run everything
+
+```bash
+docker compose up -d
+```
+
+Ports exposed by the stack:
+
+- `1935` for RTMP ingest into SRS
+- `8088` for HLS playback from SRS
+- `1985` for the SRS HTTP API
+- `8080` for the IPTV web app
+
 ## 🚀 Quick Start
 
 ### Option 1 — Docker Compose (recommended)

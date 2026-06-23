@@ -1,6 +1,16 @@
-version: "3.8"
-
 services:
+  srs:
+    image: ossrs/srs:6
+    container_name: freetv-srs
+    restart: unless-stopped
+    command: ["./objs/srs", "-c", "/usr/local/srs/conf/srs.conf"]
+    ports:
+      - "1935:1935"
+      - "8088:8080"
+      - "1985:1985"
+    volumes:
+      - ./srs.conf:/usr/local/srs/conf/srs.conf:ro
+
   viewer-counter:
     build:
       context: .
@@ -16,4 +26,5 @@ services:
       - "8080:80"
     restart: unless-stopped
     depends_on:
+      - srs
       - viewer-counter
